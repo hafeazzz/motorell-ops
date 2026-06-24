@@ -191,6 +191,11 @@ export default function MotorellOps() {
   const touch = useRef({ x: 0, y: 0 });
 
   useEffect(() => { loadState().then(setState); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
+  useEffect(() => {
+    if (!window.storage || !window.storage.subscribe) return;
+    const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then(setState); });
+    return unsub;
+  }, []);
   const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
 
