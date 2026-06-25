@@ -153,12 +153,16 @@ function Modal({ open, onClose, title, children }) {
 if (!open) return null;
 const closeIfBackdrop = (e) => { if (e.target === e.currentTarget) onClose(); };
 return (
-<div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto overscroll-contain" onClick={closeIfBackdrop}>
-<div className="min-h-full flex items-center justify-center p-4" onClick={closeIfBackdrop}>
-<div className="s-surface s-text w-full max-w-md rounded-3xl an-up">
-<div className="flex items-center justify-between p-5 pb-3"><h3 className="font-bold text-lg">{title}</h3><button onClick={onClose} className="p-1.5 rounded-lg s-soft"><X size={18} /></button></div>
-<div className="px-5 pb-5">{children}</div>
+<div
+onClick={closeIfBackdrop}
+style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, background: "rgba(0,0,0,0.5)", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "16px" }}
+>
+<div className="s-surface s-text" style={{ width: "100%", maxWidth: "448px", margin: "0 auto", borderRadius: "24px" }}>
+<div className="flex items-center justify-between" style={{ padding: "20px 20px 12px" }}>
+<h3 className="font-bold text-lg">{title}</h3>
+<button onClick={onClose} className="p-1.5 rounded-lg s-soft"><X size={18} /></button>
 </div>
+<div style={{ padding: "0 20px 20px" }}>{children}</div>
 </div>
 </div>
 );
@@ -243,7 +247,7 @@ button{transition:transform .12s ease}
 <Fade delay={0}>
 <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
 <div className="flex items-center justify-between">
-<div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v2</span></div>
+<div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v3</span></div>
 <div className="flex items-center gap-2">
 <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
 <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
