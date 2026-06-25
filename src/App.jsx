@@ -243,7 +243,7 @@ button{transition:transform .12s ease}
 <Fade delay={0}>
 <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
 <div className="flex items-center justify-between">
-<img src={LOGO} alt="Motorell" className="h-6" />
+<div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v2</span></div>
 <div className="flex items-center gap-2">
 <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
 <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
