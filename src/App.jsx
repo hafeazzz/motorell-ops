@@ -151,11 +151,14 @@ return <div onClick={onClick} style={{ ...s, background: user?.role === "owner" 
 }
 function Modal({ open, onClose, title, children }) {
 if (!open) return null;
+const closeIfBackdrop = (e) => { if (e.target === e.currentTarget) onClose(); };
 return (
-<div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-<div className="s-surface s-text w-full max-w-md rounded-3xl flex flex-col max-h-[85vh] an-up">
-<div className="flex items-center justify-between p-5 pb-3 shrink-0"><h3 className="font-bold text-lg">{title}</h3><button onClick={onClose} className="p-1.5 rounded-lg s-soft"><X size={18} /></button></div>
-<div className="px-5 pb-5 overflow-y-auto overscroll-contain">{children}</div>
+<div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto overscroll-contain" onClick={closeIfBackdrop}>
+<div className="min-h-full flex items-center justify-center p-4" onClick={closeIfBackdrop}>
+<div className="s-surface s-text w-full max-w-md rounded-3xl an-up">
+<div className="flex items-center justify-between p-5 pb-3"><h3 className="font-bold text-lg">{title}</h3><button onClick={onClose} className="p-1.5 rounded-lg s-soft"><X size={18} /></button></div>
+<div className="px-5 pb-5">{children}</div>
+</div>
 </div>
 </div>
 );
