@@ -5,7 +5,7 @@ import {
   TrendingDown, Wrench, Fuel, Package, Hand, Receipt, Circle,
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
-  MessageCircle, Send, Volume2, VolumeX
+  MessageCircle, Send, Volume2, VolumeX, Download
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -74,6 +74,7 @@ function clickSound(e) {
 
 /* ============ Config ============ */
 const OWNER_PW = "@Motorell#";
+const SALE_BONUS = 200000;
 const CATS = {
   service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
   jasa: { label: "Jasa", icon: Hand, color: "#a855f7", ph: "cth: ongkos pasang, jasa bengkel…" },
@@ -93,9 +94,9 @@ const seed = () => ({
   _v: SEED_V,
   users: [
     { id: "u_own", name: "Mr.Vee", role: "owner", position: "Owner", avatar: "" },
-    { id: "u_omen", name: "Omen", role: "staff", position: "Mekanik", password: "", avatar: "" },
+    { id: "u_omen", name: "Omen", role: "staff", position: "Mekanik", password: "", avatar: "", saleBonus: true },
     { id: "u_tyo", name: "Tyo", role: "staff", position: "Mekanik", password: "", avatar: "" },
-    { id: "u_beceng", name: "Beceng", role: "staff", position: "Sales", password: "", avatar: "" },
+    { id: "u_beceng", name: "Beceng", role: "staff", position: "Sales", password: "", avatar: "", saleBonus: true },
     { id: "u_bear", name: "Bear", role: "staff", position: "Media", password: "", avatar: "" },
   ],
   units: [],
@@ -120,8 +121,8 @@ function normalize(s) {
     tasks: arr(s.tasks, []),
     chat: arr(s.chat, []),
   };
-  out.users = out.users.map((u) => ({ avatar: "", ...(u.role === "owner" ? {} : { password: "" }), ...u }));
-  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
+  out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u }));
+  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", ...m }));
   return out;
 }
@@ -246,7 +247,7 @@ export default function MotorellOps() {
   };
 
   return (
-    <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-2xl mx-auto relative`}>
+    <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-2xl lg:max-w-5xl mx-auto relative`}>
       <style>{`
 .mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
 .mr-app.dark{--bg:#0a0f1a;--surface:#121a2b;--soft:#1b2540;--border:#26324d;--text:#e7edf7;--muted:#94a6c4;--header:#070b14}
@@ -265,7 +266,7 @@ button{transition:transform .12s ease}
       <Fade delay={0}>
         <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v6</span></div>
+            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v7</span></div>
             <div className="flex items-center gap-2">
               <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -287,7 +288,7 @@ button{transition:transform .12s ease}
         </div>
       </main>
 
-      <nav style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-2xl s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
+      <nav style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-2xl lg:max-w-5xl s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
         {tabs.map((t) => {
           const Ic = t.icon; const on = tab === t.id;
           return (
@@ -300,7 +301,7 @@ button{transition:transform .12s ease}
 
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} />
 
-      <ProfileModal open={profile} me={me} onClose={() => setProfile(false)} update={update} setMe={setMe} dark={dark} toggleDark={toggleDark} onLogout={() => { setProfile(false); setMe(null); setTab("home"); }} />
+      <ProfileModal open={profile} me={me} state={state} onClose={() => setProfile(false)} update={update} setMe={setMe} dark={dark} toggleDark={toggleDark} onLogout={() => { setProfile(false); setMe(null); setTab("home"); }} />
     </div>
   );
 }
@@ -356,8 +357,29 @@ function Auth({ state, onLogin, update }) {
 }
 
 /* ============ Profile ============ */
-function ProfileModal({ open, me, onClose, update, setMe, dark, toggleDark, onLogout }) {
+function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDark, onLogout }) {
   const ref = useRef(null);
+  const impRef = useRef(null);
+  const exportData = () => {
+    try {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `motorell-backup-${today()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) { alert("Gagal membuat file backup."); }
+  };
+  const importData = async (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!data || !Array.isArray(data.users)) throw new Error("format");
+      if (!window.confirm("Pulihkan data dari file ini? SEMUA data saat ini akan ditimpa, dan ini berlaku untuk semua anggota. Lanjut?")) return;
+      await saveState(data);
+      window.location.reload();
+    } catch (err) { alert("File backup tidak valid atau rusak."); }
+  };
   const [snd, setSnd] = useState(SOUND_ON);
   const [pwOpen, setPwOpen] = useState(false);
   const [cur, setCur] = useState(""); const [np, setNp] = useState(""); const [np2, setNp2] = useState(""); const [pwMsg, setPwMsg] = useState(null);
@@ -400,6 +422,14 @@ function ProfileModal({ open, me, onClose, update, setMe, dark, toggleDark, onLo
           </div>
         )}
       </div>
+      {me.role === "owner" && (
+        <div className="s-soft rounded-xl px-4 py-3 mb-3">
+          <p className="text-sm font-semibold flex items-center gap-2 mb-1"><Download size={16} />Backup data</p>
+          <p className="text-[11px] s-muted mb-2.5">Unduh cadangan semua data jadi 1 file, simpan ke Google Drive sebagai arsip. "Pulihkan" mengembalikan data dari file backup.</p>
+          <input ref={impRef} type="file" accept="application/json,.json" className="hidden" onChange={importData} />
+          <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={exportData}><Download size={14} className="inline mr-1 -mt-0.5" />Unduh backup</Btn><Btn variant="ghost" onClick={() => impRef.current && impRef.current.click()}>Pulihkan</Btn></div>
+        </div>
+      )}
       <Btn variant="ghost" onClick={onLogout} className="w-full"><LogOut size={15} className="inline mr-1.5 -mt-0.5" />Keluar</Btn>
     </Modal>
   );
@@ -562,7 +592,7 @@ function UangTab({ state, me, update }) {
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
       {state.units.length === 0 && <Card className="p-8 text-center"><Bike size={28} className="mx-auto text-orange-500 mb-2" /><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
-      {state.units.map((u) => {
+      <div className="grid gap-3 lg:grid-cols-2">{state.units.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
         return (
           <Card key={u.id} className="p-4">
@@ -575,7 +605,7 @@ function UangTab({ state, me, update }) {
             <Btn variant="ghost" onClick={() => setExpModal({ mode: "add", unitId: u.id })} className="w-full mt-3"><Plus size={15} className="inline mr-1 -mt-0.5" />Catat pengeluaran</Btn>
           </Card>
         );
-      })}
+      })}</div>
       <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} />
       <UnitDetailModal unitId={detail} state={state} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
@@ -585,12 +615,13 @@ function UangTab({ state, me, update }) {
 const Read = ({ label, value, accent }) => <div className="s-soft rounded-xl py-2 px-3 text-center"><p className="text-[10px] s-muted mb-0.5">{label}</p><p className="text-sm font-bold break-words leading-tight" style={accent ? { color: accent } : {}}>{value}</p></div>;
 
 function AddUnitModal({ open, onClose, update }) {
-  const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "" });
-  const save = () => { if (!f.name) return; update((s) => { s.units.push({ id: uid(), name: f.name, plate: f.plate, buyPrice: +f.buyPrice || 0, sellPrice: +f.sellPrice || 0, status: "proses", investorCode: f.investorCode.trim(), soldAt: null }); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "" }); onClose(); };
+  const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today() });
+  const save = () => { if (!f.name) return; update((s) => { s.units.push({ id: uid(), name: f.name, plate: f.plate, buyPrice: +f.buyPrice || 0, sellPrice: +f.sellPrice || 0, status: "proses", investorCode: f.investorCode.trim(), inDate: f.inDate || today(), soldAt: null }); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today() }); onClose(); };
   return (
     <Modal open={open} onClose={onClose} title="Tambah unit motor">
       <Field label="Nama / tipe motor"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Honda Beat 2019" /></Field>
       <Field label="Plat nomor"><input className={inputCls} value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="B 1234 XYZ" /></Field>
+      <Field label="Tanggal masuk"><input type="date" className={inputCls} value={f.inDate} onChange={(e) => setF({ ...f, inDate: e.target.value })} /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
       <Field label="Kode investor (opsional)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA (uang investor siapa)" /></Field>
       <Btn onClick={save} className="w-full mt-2">Simpan unit</Btn>
@@ -619,7 +650,19 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
   const [confirmDel, setConfirmDel] = useState(false);
   useEffect(() => { setConfirmDel(false); }, [unitId]);
   const setField = (k, v) => update((s) => { s.units.find((u) => u.id === unitId)[k] = v; return s; });
-  const setStatus = (status) => update((s) => { const u = s.units.find((x) => x.id === unitId); u.status = status; u.soldAt = status === "terjual" ? today() : null; return s; });
+  const setStatus = (status) => update((s) => {
+    const u = s.units.find((x) => x.id === unitId);
+    const wasSold = u.status === "terjual";
+    u.status = status;
+    if (status === "terjual") {
+      if (!u.soldAt) u.soldAt = today();
+      if (!wasSold) s.users.filter((x) => x.saleBonus).forEach((x) => s.extras.push({ id: uid(), userId: x.id, amount: SALE_BONUS, note: `Bonus unit terjual: ${u.name}`, by: "u_own", date: today(), unitId: u.id, auto: true }));
+    } else {
+      u.soldAt = null;
+      if (wasSold) s.extras = s.extras.filter((e) => !(e.unitId === u.id && e.auto));
+    }
+    return s;
+  });
   const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
   const delUnit = () => { update((s) => { s.units = s.units.filter((u) => u.id !== unitId); s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
   return (
@@ -627,7 +670,9 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
       <p className="text-[11px] s-muted -mt-2 mb-3">Semua kolom bisa diedit kapan saja.</p>
       <Field label="Nama motor"><input className={inputCls} defaultValue={unit.name} onBlur={(e) => setField("name", e.target.value)} /></Field>
       <Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
-      <div className="grid grid-cols-2 gap-2"><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field></div>
+      <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
+      <div className="grid grid-cols-2 gap-2"><Field label="Tanggal masuk"><input type="date" className={inputCls} defaultValue={unit.inDate || ""} onBlur={(e) => setField("inDate", e.target.value)} /></Field><Field label="Tanggal keluar (terjual)"><input type="date" className={inputCls} defaultValue={unit.soldAt || ""} onBlur={(e) => setField("soldAt", e.target.value || null)} /></Field></div>
+      <Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field>
       <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{l}</button>)}</div></div>
       {Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
       <p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
@@ -706,15 +751,15 @@ function TimTab({ state, update }) {
   const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
   const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
   const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
-  const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik" });
-  const openEdit = (u) => { setEf({ name: u.name, position: u.position }); setEditU(u); };
-  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; } return s; }); setEditU(null); };
+  const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false });
+  const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus }); setEditU(u); };
+  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; } return s; }); setEditU(null); };
   const resetPw = (id, name) => { if (window.confirm(`Reset password ${name}? Dia akan diminta bikin password baru saat login berikutnya.`)) update((s) => { const u = s.users.find((x) => x.id === id); if (u) u.password = ""; return s; }); };
   const delUser = (id, name) => { if (window.confirm(`Hapus anggota "${name}"? Tindakan ini permanen.`)) update((s) => { s.users = s.users.filter((x) => x.id !== id); s.tasks = s.tasks.filter((t) => t.userId !== id); return s; }); };
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim & Task</p><Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
-      {state.users.filter((u) => u.role !== "owner").map((u) => {
+      <div className="grid gap-3 lg:grid-cols-2">{state.users.filter((u) => u.role !== "owner").map((u) => {
         const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
         const extraM = state.extras.filter((x) => x.userId === u.id && inMonth(x.date, month())).reduce((a, x) => a + x.amount, 0);
         return (
@@ -726,11 +771,11 @@ function TimTab({ state, update }) {
             <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border"><button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button><button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button><button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button></div>
           </Card>
         );
-      })}
+      })}</div>
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
       <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Kasih extra cash (bonus)"><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">Beri bonus</Btn></Modal>
-      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
+      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
 }

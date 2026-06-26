@@ -105,13 +105,11 @@ const storage = {
   /* REALTIME: panggil callback tiap data 'key' ini berubah dari mana pun.
      Mengembalikan fungsi untuk berhenti mendengarkan (unsubscribe). */
   subscribe(key, callback) {
-    let lastRun = 0;
+    let timer = null;
     const handler = () => {
-      // throttle ringan: hindari reload bertubi-tubi kalau ada banyak update beruntun
-      const now = Date.now();
-      if (now - lastRun < 250) return;
-      lastRun = now;
-      callback();
+      // debounce trailing: selalu reload SETELAH perubahan terakhir, jadi tidak ada update yang "tertelan"
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; callback(); }, 180);
     };
     const channel = supabase
       .channel(`kv-${key}`)
@@ -122,6 +120,7 @@ const storage = {
       )
       .subscribe();
     return () => {
+      if (timer) clearTimeout(timer);
       try {
         supabase.removeChannel(channel);
       } catch (e) {}
