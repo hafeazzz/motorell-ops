@@ -246,7 +246,7 @@ export default function MotorellOps() {
   };
 
   return (
-    <div onClick={clickSound} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md mx-auto relative pb-20`}>
+    <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-2xl mx-auto relative`}>
       <style>{`
 .mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
 .mr-app.dark{--bg:#0a0f1a;--surface:#121a2b;--soft:#1b2540;--border:#26324d;--text:#e7edf7;--muted:#94a6c4;--header:#070b14}
@@ -265,7 +265,7 @@ button{transition:transform .12s ease}
       <Fade delay={0}>
         <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v5</span></div>
+            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v6</span></div>
             <div className="flex items-center gap-2">
               <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -287,7 +287,7 @@ button{transition:transform .12s ease}
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
+      <nav style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-2xl s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
         {tabs.map((t) => {
           const Ic = t.icon; const on = tab === t.id;
           return (
@@ -312,7 +312,7 @@ function Auth({ state, onLogin, update }) {
   const back = () => { setSel(null); setPw(""); setPw2(""); setErr(""); };
   const firstTime = sel && sel.role === "staff" && !sel.password;
   const submit = () => {
-    if (sel.role === "owner") { pw === OWNER_PW ? onLogin(sel) : setErr("Password salah."); return; }
+    if (sel.role === "owner") { (pw === OWNER_PW || (sel.password && pw === sel.password)) ? onLogin(sel) : setErr("Password salah."); return; }
     if (firstTime) {
       if (pw.length < 4) return setErr("Password minimal 4 karakter.");
       if (pw !== pw2) return setErr("Konfirmasi password tidak sama.");
@@ -347,6 +347,7 @@ function Auth({ state, onLogin, update }) {
             {firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-orange-400" /></div>}
             {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
             <Btn onClick={submit} className="w-full">{firstTime ? "Buat & masuk" : "Masuk"}</Btn>
+            {!firstTime && sel.role === "staff" && <p className="text-center text-xs text-slate-500 mt-4">Lupa password? Minta owner reset lewat menu <b className="text-slate-300">Tim</b>.</p>}
           </div>
         )}
       </div>
@@ -358,6 +359,18 @@ function Auth({ state, onLogin, update }) {
 function ProfileModal({ open, me, onClose, update, setMe, dark, toggleDark, onLogout }) {
   const ref = useRef(null);
   const [snd, setSnd] = useState(SOUND_ON);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [cur, setCur] = useState(""); const [np, setNp] = useState(""); const [np2, setNp2] = useState(""); const [pwMsg, setPwMsg] = useState(null);
+  const changePw = () => {
+    const okCur = me.role === "owner" ? (cur === OWNER_PW || (me.password && cur === me.password)) : cur === me.password;
+    if (!okCur) return setPwMsg({ t: "err", m: "Password lama salah." });
+    if (np.length < 4) return setPwMsg({ t: "err", m: "Password baru minimal 4 karakter." });
+    if (np !== np2) return setPwMsg({ t: "err", m: "Konfirmasi tidak sama." });
+    update((s) => { const u = s.users.find((x) => x.id === me.id); if (u) u.password = np; return s; });
+    setMe((prev) => ({ ...prev, password: np }));
+    setPwMsg({ t: "ok", m: "Password berhasil diganti." });
+    setCur(""); setNp(""); setNp2("");
+  };
   const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 256, 0.72); if (!data) return; update((s) => { const u = s.users.find((x) => x.id === me.id); if (u) u.avatar = data; return s; }); setMe((prev) => ({ ...prev, avatar: data })); };
   return (
     <Modal open={open} onClose={onClose} title="Profil">
@@ -374,6 +387,18 @@ function ProfileModal({ open, me, onClose, update, setMe, dark, toggleDark, onLo
       <div className="flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-3">
         <span className="text-sm font-semibold flex items-center gap-2">{snd ? <Volume2 size={16} /> : <VolumeX size={16} />}Suara klik</span>
         <button onClick={() => { SOUND_ON = !snd; setSnd(SOUND_ON); window.storage.set("motorell-sound", SOUND_ON ? "1" : "0").catch(() => {}); }} className={`w-12 h-7 rounded-full p-1 transition ${snd ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${snd ? "translate-x-5" : ""}`} /></button>
+      </div>
+      <div className="s-soft rounded-xl px-4 py-3 mb-3">
+        <button onClick={() => { setPwOpen((o) => !o); setPwMsg(null); }} className="w-full flex items-center justify-between text-sm font-semibold"><span className="flex items-center gap-2"><Lock size={16} />Ganti password</span><ChevronRight size={16} className={`transition ${pwOpen ? "rotate-90" : ""}`} /></button>
+        {pwOpen && (
+          <div className="mt-3 space-y-2">
+            <input type="password" className={inputCls} placeholder="Password lama" value={cur} onChange={(e) => { setCur(e.target.value); setPwMsg(null); }} />
+            <input type="password" className={inputCls} placeholder="Password baru (min. 4)" value={np} onChange={(e) => { setNp(e.target.value); setPwMsg(null); }} />
+            <input type="password" className={inputCls} placeholder="Konfirmasi password baru" value={np2} onChange={(e) => { setNp2(e.target.value); setPwMsg(null); }} />
+            {pwMsg && <p className={`text-xs ${pwMsg.t === "ok" ? "text-emerald-500" : "text-rose-500"}`}>{pwMsg.m}</p>}
+            <Btn onClick={changePw} className="w-full">Simpan password</Btn>
+          </div>
+        )}
       </div>
       <Btn variant="ghost" onClick={onLogout} className="w-full"><LogOut size={15} className="inline mr-1.5 -mt-0.5" />Keluar</Btn>
     </Modal>
@@ -681,6 +706,11 @@ function TimTab({ state, update }) {
   const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
   const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
   const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
+  const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik" });
+  const openEdit = (u) => { setEf({ name: u.name, position: u.position }); setEditU(u); };
+  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; } return s; }); setEditU(null); };
+  const resetPw = (id, name) => { if (window.confirm(`Reset password ${name}? Dia akan diminta bikin password baru saat login berikutnya.`)) update((s) => { const u = s.users.find((x) => x.id === id); if (u) u.password = ""; return s; }); };
+  const delUser = (id, name) => { if (window.confirm(`Hapus anggota "${name}"? Tindakan ini permanen.`)) update((s) => { s.users = s.users.filter((x) => x.id !== id); s.tasks = s.tasks.filter((t) => t.userId !== id); return s; }); };
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim & Task</p><Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
@@ -693,12 +723,14 @@ function TimTab({ state, update }) {
             {extraM > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-2 flex items-center gap-1"><Gift size={12} />Extra cash bulan ini: {rp(extraM)}</p>}
             <div className="space-y-1 mb-2">{tasks.map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted">{t.done ? <CheckCircle2 size={13} className="text-emerald-500" /> : <Circle size={13} />}<span className={t.done ? "line-through" : ""}>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
             <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>
+            <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border"><button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button><button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button><button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button></div>
           </Card>
         );
       })}
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
       <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Kasih extra cash (bonus)"><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">Beri bonus</Btn></Modal>
+      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
 }
