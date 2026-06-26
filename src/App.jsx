@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-Bike, Wallet, Video, CheckSquare, Users, Home, Plus, LogOut,
-Clock, BadgeCheck, X, Trash2, Link as LinkIcon, TrendingUp,
-TrendingDown, Wrench, Fuel, Package, Hand, Receipt, Circle,
-CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
-Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
-MessageCircle, Send, Volume2, VolumeX
+  Bike, Wallet, Video, CheckSquare, Users, Home, Plus, LogOut,
+  Clock, BadgeCheck, X, Trash2, Link as LinkIcon, TrendingUp,
+  TrendingDown, Wrench, Fuel, Package, Hand, Receipt, Circle,
+  CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
+  Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
+  MessageCircle, Send, Volume2, VolumeX
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -23,63 +23,63 @@ const now = () => new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minu
 const monthLabel = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" }); };
 const shiftMonth = (ym, d) => { const [y, m] = ym.split("-").map(Number); const i = y * 12 + (m - 1) + d; return `${Math.floor(i / 12)}-${pad2((i % 12) + 1)}`; };
 function greeting() {
-const m = new Date().getHours() * 60 + new Date().getMinutes();
-if (m >= 240 && m <= 659) return { t: "Selamat pagi", e: "🌅" };
-if (m >= 660 && m <= 899) return { t: "Selamat siang", e: "☀️" };
-if (m >= 900 && m <= 1109) return { t: "Selamat sore", e: "🌇" };
-return { t: "Selamat malam", e: "🌙" };
+  const m = new Date().getHours() * 60 + new Date().getMinutes();
+  if (m >= 240 && m <= 659) return { t: "Selamat pagi", e: "🌅" };
+  if (m >= 660 && m <= 899) return { t: "Selamat siang", e: "☀️" };
+  if (m >= 900 && m <= 1109) return { t: "Selamat sore", e: "🌇" };
+  return { t: "Selamat malam", e: "🌙" };
 }
 function compress(file, maxW = 640, quality = 0.55) {
-return new Promise((resolve) => {
-const reader = new FileReader();
-reader.onload = (e) => {
-const img = new Image();
-img.onload = () => {
-const scale = Math.min(1, maxW / img.width);
-const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-const c = document.createElement("canvas"); c.width = w; c.height = h;
-c.getContext("2d").drawImage(img, 0, 0, w, h);
-resolve(c.toDataURL("image/jpeg", quality));
-};
-img.onerror = () => resolve("");
-img.src = e.target.result;
-};
-reader.readAsDataURL(file);
-});
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve("");
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 let _ac;
 let SOUND_ON = true;
 function playClick() {
-if (!SOUND_ON) return;
-try {
-_ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
-if (_ac.state === "suspended") _ac.resume();
-const t = _ac.currentTime;
-const o = _ac.createOscillator(), g = _ac.createGain();
-o.type = "triangle";
-o.frequency.setValueAtTime(900, t);
-o.frequency.exponentialRampToValueAtTime(360, t + 0.045);
-g.gain.setValueAtTime(0.0001, t);
-g.gain.exponentialRampToValueAtTime(0.07, t + 0.004);
-g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
-o.connect(g); g.connect(_ac.destination);
-o.start(t); o.stop(t + 0.07);
-} catch (e) {}
+  if (!SOUND_ON) return;
+  try {
+    _ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (_ac.state === "suspended") _ac.resume();
+    const t = _ac.currentTime;
+    const o = _ac.createOscillator(), g = _ac.createGain();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(900, t);
+    o.frequency.exponentialRampToValueAtTime(360, t + 0.045);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.07, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    o.connect(g); g.connect(_ac.destination);
+    o.start(t); o.stop(t + 0.07);
+  } catch (e) {}
 }
 function clickSound(e) {
-const el = e.target;
-if (el && el.closest && el.closest('button, a, input, select, label, textarea, [role="button"]')) playClick();
+  const el = e.target;
+  if (el && el.closest && el.closest('button, a, input, select, label, textarea, [role="button"]')) playClick();
 }
 
 /* ============ Config ============ */
 const OWNER_PW = "@Motorell#";
 const CATS = {
-service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
-jasa: { label: "Jasa", icon: Hand, color: "#a855f7", ph: "cth: ongkos pasang, jasa bengkel…" },
-bensin: { label: "Bensin", icon: Fuel, color: "#10b981", ph: "cth: isi bensin buat tes jalan…" },
-sparepart: { label: "Sparepart", icon: Package, color: "#3b82f6", ph: "cth: beli ban, aki, lampu, baut…" },
-pajak: { label: "Pajak", icon: Receipt, color: "#eab308", ph: "cth: perpanjang STNK, pajak tahunan…" },
+  service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
+  jasa: { label: "Jasa", icon: Hand, color: "#a855f7", ph: "cth: ongkos pasang, jasa bengkel…" },
+  bensin: { label: "Bensin", icon: Fuel, color: "#10b981", ph: "cth: isi bensin buat tes jalan…" },
+  sparepart: { label: "Sparepart", icon: Package, color: "#3b82f6", ph: "cth: beli ban, aki, lampu, baut…" },
+  pajak: { label: "Pajak", icon: Receipt, color: "#eab308", ph: "cth: perpanjang STNK, pajak tahunan…" },
 };
 const MEDIA_CATS = ["ADS", "TESTIMONI", "LONG YOUTUBE", "CLIPPER", "AUTOMATION"];
 const MCAT_COLOR = { "ADS": "amber", "TESTIMONI": "emerald", "LONG YOUTUBE": "rose", "CLIPPER": "blue", "AUTOMATION": "purple" };
@@ -90,150 +90,164 @@ const SEED_V = 7;
 
 /* ============ Seed ============ */
 const seed = () => ({
-_v: SEED_V,
-users: [
-{ id: "u_own", name: "Mr.Vee", role: "owner", position: "Owner", avatar: "" },
-{ id: "u_omen", name: "Omen", role: "staff", position: "Mekanik", password: "", avatar: "" },
-{ id: "u_tyo", name: "Tyo", role: "staff", position: "Mekanik", password: "", avatar: "" },
-{ id: "u_beceng", name: "Beceng", role: "staff", position: "Sales", password: "", avatar: "" },
-{ id: "u_bear", name: "Bear", role: "staff", position: "Media", password: "", avatar: "" },
-],
-units: [],
-expenses: [],
-attendance: [], lives: [], extras: [], chat: [],
-media: [],
-tasks: [],
+  _v: SEED_V,
+  users: [
+    { id: "u_own", name: "Mr.Vee", role: "owner", position: "Owner", avatar: "" },
+    { id: "u_omen", name: "Omen", role: "staff", position: "Mekanik", password: "", avatar: "" },
+    { id: "u_tyo", name: "Tyo", role: "staff", position: "Mekanik", password: "", avatar: "" },
+    { id: "u_beceng", name: "Beceng", role: "staff", position: "Sales", password: "", avatar: "" },
+    { id: "u_bear", name: "Bear", role: "staff", position: "Media", password: "", avatar: "" },
+  ],
+  units: [],
+  expenses: [],
+  attendance: [], lives: [], extras: [], chat: [],
+  media: [],
+  tasks: [],
 });
 
 /* ============ Storage ============ */
 function normalize(s) {
-const arr = (x, d) => (Array.isArray(x) ? x : d);
-const out = {
-_v: SEED_V,
-users: arr(s.users, seed().users),
-units: arr(s.units, []),
-expenses: arr(s.expenses, []),
-attendance: arr(s.attendance, []),
-lives: arr(s.lives, []),
-extras: arr(s.extras, []),
-media: arr(s.media, []),
-tasks: arr(s.tasks, []),
-chat: arr(s.chat, []),
-};
-out.users = out.users.map((u) => ({ avatar: "", ...(u.role === "owner" ? {} : { password: "" }), ...u }));
-out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
-out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", ...m }));
-return out;
+  const arr = (x, d) => (Array.isArray(x) ? x : d);
+  const out = {
+    _v: SEED_V,
+    users: arr(s.users, seed().users),
+    units: arr(s.units, []),
+    expenses: arr(s.expenses, []),
+    attendance: arr(s.attendance, []),
+    lives: arr(s.lives, []),
+    extras: arr(s.extras, []),
+    media: arr(s.media, []),
+    tasks: arr(s.tasks, []),
+    chat: arr(s.chat, []),
+  };
+  out.users = out.users.map((u) => ({ avatar: "", ...(u.role === "owner" ? {} : { password: "" }), ...u }));
+  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
+  out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", ...m }));
+  return out;
 }
 async function loadState() {
-try {
-const r = await window.storage.get(STORE_KEY, true);
-if (r && r.value) { const p = JSON.parse(r.value); if (p && p._v === SEED_V) return normalize(p); }
-} catch (e) {}
-const s = seed(); try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} return s;
+  try {
+    const r = await window.storage.get(STORE_KEY, true);
+    if (r && r.value) { const p = JSON.parse(r.value); if (p && p._v === SEED_V) return normalize(p); }
+  } catch (e) {}
+  const s = seed(); try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} return s;
 }
 async function saveState(s) { try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} }
+
+// Hapus foto absen & bukti live yang lebih tua dari PHOTO_TTL_DAYS hari (catatannya tetap disimpan).
+const PHOTO_TTL_DAYS = 2;
+function prunePhotos(state) {
+  const d = new Date(); d.setDate(d.getDate() - PHOTO_TTL_DAYS);
+  const cutoff = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  let changed = false;
+  const strip = (arr) => (arr || []).map((r) => {
+    if (r && r.photo && r.date && r.date < cutoff) { changed = true; return { ...r, photo: "" }; }
+    return r;
+  });
+  const next = { ...state, attendance: strip(state.attendance), lives: strip(state.lives) };
+  return { next, changed };
+}
 
 /* ============ UI bits ============ */
 const Card = ({ children, className = "" }) => <div className={`s-surface s-border border rounded-2xl ${className}`}>{children}</div>;
 const Fade = ({ delay = 0, children }) => <div className="mr-fade" style={{ animationDelay: `${delay}ms` }}>{children}</div>;
 const Btn = ({ children, onClick, variant = "primary", className = "", disabled }) => {
-const st = { primary: "bg-orange-500 text-white", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
-return <button type="button" onClick={onClick} disabled={disabled} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-40 ${st[variant]} ${className}`}>{children}</button>;
+  const st = { primary: "bg-orange-500 text-white", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
+  return <button type="button" onClick={onClick} disabled={disabled} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-40 ${st[variant]} ${className}`}>{children}</button>;
 };
 const Field = ({ label, children }) => <label className="block mb-3"><span className="text-xs font-semibold s-muted mb-1 block">{label}</span>{children}</label>;
 const inputCls = "s-input w-full px-3 py-2.5 rounded-xl text-sm";
 const Tag = ({ children, color }) => <span className={`tg-${color} text-[11px] font-bold px-2 py-1 rounded-lg`}>{children}</span>;
 
 function Avatar({ user, size = 36, onClick }) {
-const s = { width: size, height: size };
-if (user?.avatar) return <img src={user.avatar} onClick={onClick} style={s} className="rounded-full object-cover" alt="" />;
-return <div onClick={onClick} style={{ ...s, background: user?.role === "owner" ? "#f97316" : "#475569", fontSize: size * 0.4 }} className="rounded-full grid place-items-center font-bold text-white uppercase shrink-0">{user?.name?.[0] || "?"}</div>;
+  const s = { width: size, height: size };
+  if (user?.avatar) return <img src={user.avatar} onClick={onClick} style={s} className="rounded-full object-cover" alt="" />;
+  return <div onClick={onClick} style={{ ...s, background: user?.role === "owner" ? "#f97316" : "#475569", fontSize: size * 0.4 }} className="rounded-full grid place-items-center font-bold text-white uppercase shrink-0">{user?.name?.[0] || "?"}</div>;
 }
 function Modal({ open, onClose, title, children }) {
-if (!open) return null;
-const closeIfBackdrop = (e) => { if (e.target === e.currentTarget) onClose(); };
-const isDark = typeof document !== "undefined" && !!document.querySelector(".mr-app.dark");
-return createPortal(
-<div
-className={`mr-app ${isDark ? "dark" : ""} font-sans`}
-onClick={closeIfBackdrop}
-style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, background: "rgba(0,0,0,0.5)", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "16px" }}
->
-<div className="s-surface s-text" style={{ width: "100%", maxWidth: "448px", margin: "0 auto", borderRadius: "24px" }}>
-<div className="flex items-center justify-between" style={{ padding: "20px 20px 12px" }}>
-<h3 className="font-bold text-lg">{title}</h3>
-<button onClick={onClose} className="p-1.5 rounded-lg s-soft"><X size={18} /></button>
-</div>
-<div style={{ padding: "0 20px 20px" }}>{children}</div>
-</div>
-</div>,
-document.body
-);
+  if (!open) return null;
+  const closeIfBackdrop = (e) => { if (e.target === e.currentTarget) onClose(); };
+  const isDark = typeof document !== "undefined" && !!document.querySelector(".mr-app.dark");
+  return createPortal(
+    <div
+      className={`mr-app ${isDark ? "dark" : ""} font-sans`}
+      onClick={closeIfBackdrop}
+      style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, background: "rgba(0,0,0,0.5)", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "16px" }}
+    >
+      <div className="s-surface s-text" style={{ width: "100%", maxWidth: "448px", margin: "0 auto", borderRadius: "24px" }}>
+        <div className="flex items-center justify-between" style={{ padding: "20px 20px 12px" }}>
+          <h3 className="font-bold text-lg">{title}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg s-soft"><X size={18} /></button>
+        </div>
+        <div style={{ padding: "0 20px 20px" }}>{children}</div>
+      </div>
+    </div>,
+    document.body
+  );
 }
 function Lightbox({ src, onClose }) {
-if (!src) return null;
-return createPortal(<div className="fixed inset-0 z-[60] bg-black/80 grid place-items-center p-5" onClick={onClose}><img src={src} className="max-h-[85vh] max-w-full rounded-2xl" alt="" /></div>, document.body);
+  if (!src) return null;
+  return createPortal(<div className="fixed inset-0 z-[60] bg-black/80 grid place-items-center p-5" onClick={onClose}><img src={src} className="max-h-[85vh] max-w-full rounded-2xl" alt="" /></div>, document.body);
 }
 function PhotoInput({ value, onChange, label = "Ambil / pilih foto", gallery }) {
-const ref = useRef(null);
-const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const d = await compress(f); if (d) onChange(d); };
-return (
-<div>
-<input ref={ref} type="file" accept="image/*" {...(gallery ? {} : { capture: "environment" })} className="hidden" onChange={pick} />
-{value ? (
-<div className="relative"><img src={value} className="w-full h-40 object-cover rounded-xl" alt="" /><button onClick={() => onChange("")} className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-lg"><X size={14} /></button></div>
-) : (
-<button onClick={() => ref.current && ref.current.click()} className="w-full h-32 border-2 border-dashed s-border rounded-xl grid place-items-center s-muted"><div className="flex flex-col items-center gap-1"><Camera size={22} /><span className="text-xs font-semibold">{label}</span></div></button>
-)}
-</div>
-);
+  const ref = useRef(null);
+  const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const d = await compress(f); if (d) onChange(d); };
+  return (
+    <div>
+      <input ref={ref} type="file" accept="image/*" {...(gallery ? {} : { capture: "environment" })} className="hidden" onChange={pick} />
+      {value ? (
+        <div className="relative"><img src={value} className="w-full h-40 object-cover rounded-xl" alt="" /><button onClick={() => onChange("")} className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-lg"><X size={14} /></button></div>
+      ) : (
+        <button onClick={() => ref.current && ref.current.click()} className="w-full h-32 border-2 border-dashed s-border rounded-xl grid place-items-center s-muted"><div className="flex flex-col items-center gap-1"><Camera size={22} /><span className="text-xs font-semibold">{label}</span></div></button>
+      )}
+    </div>
+  );
 }
 
 /* ============ App ============ */
 export default function MotorellOps() {
-const [state, setState] = useState(null);
-const [me, setMe] = useState(null);
-const [tab, setTab] = useState("home");
-const [dir, setDir] = useState(1);
-const [dark, setDark] = useState(false);
-const [profile, setProfile] = useState(false);
-const [chatOpen, setChatOpen] = useState(false);
-const touch = useRef({ x: 0, y: 0 });
+  const [state, setState] = useState(null);
+  const [me, setMe] = useState(null);
+  const [tab, setTab] = useState("home");
+  const [dir, setDir] = useState(1);
+  const [dark, setDark] = useState(false);
+  const [profile, setProfile] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const touch = useRef({ x: 0, y: 0 });
 
-useEffect(() => { loadState().then(setState); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
-useEffect(() => {
-if (!window.storage || !window.storage.subscribe) return;
-const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then(setState); });
-return unsub;
-}, []);
-const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
-const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
+  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); if (changed) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
+  useEffect(() => {
+    if (!window.storage || !window.storage.subscribe) return;
+    const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then(setState); });
+    return unsub;
+  }, []);
+  const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
+  const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
 
-if (!state) return <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
-if (!me) return <Auth state={state} onLogin={setMe} update={update} />;
+  if (!state) return <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
+  if (!me) return <Auth state={state} onLogin={setMe} update={update} />;
 
-const isOwner = me.role === "owner";
-const tabs = [
-{ id: "home", label: "Beranda", icon: Home },
-{ id: "absen", label: "Absen", icon: Clock },
-{ id: "uang", label: "Keuangan", icon: Wallet },
-{ id: "media", label: "Media", icon: Video },
-...(isOwner
-? [{ id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
-: [{ id: "task", label: "Task", icon: CheckSquare }]),
-];
-const order = tabs.map((t) => t.id);
-const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
-const onTStart = (e) => { const p = e.touches[0]; touch.current = { x: p.clientX, y: p.clientY }; };
-const onTEnd = (e) => {
-const p = e.changedTouches[0]; const dx = p.clientX - touch.current.x, dy = p.clientY - touch.current.y;
-if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6) { const ci = order.indexOf(tab); const ni = dx < 0 ? ci + 1 : ci - 1; if (ni >= 0 && ni < order.length) goTab(order[ni]); }
-};
+  const isOwner = me.role === "owner";
+  const tabs = [
+    { id: "home", label: "Beranda", icon: Home },
+    { id: "absen", label: "Absen", icon: Clock },
+    { id: "uang", label: "Keuangan", icon: Wallet },
+    { id: "media", label: "Media", icon: Video },
+    ...(isOwner
+      ? [{ id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
+      : [{ id: "task", label: "Task", icon: CheckSquare }]),
+  ];
+  const order = tabs.map((t) => t.id);
+  const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
+  const onTStart = (e) => { const p = e.touches[0]; touch.current = { x: p.clientX, y: p.clientY }; };
+  const onTEnd = (e) => {
+    const p = e.changedTouches[0]; const dx = p.clientX - touch.current.x, dy = p.clientY - touch.current.y;
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6) { const ci = order.indexOf(tab); const ni = dx < 0 ? ci + 1 : ci - 1; if (ni >= 0 && ni < order.length) goTab(order[ni]); }
+  };
 
-return (
-<div onClick={clickSound} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md mx-auto relative pb-20`}>
-<style>{`
+  return (
+    <div onClick={clickSound} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md mx-auto relative pb-20`}>
+      <style>{`
 .mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
 .mr-app.dark{--bg:#0a0f1a;--surface:#121a2b;--soft:#1b2540;--border:#26324d;--text:#e7edf7;--muted:#94a6c4;--header:#070b14}
 .s-bg{background:var(--bg)}.s-surface{background:var(--surface)}.s-soft{background:var(--soft)}.s-border{border-color:var(--border)}.s-text{color:var(--text)}.s-muted{color:var(--muted)}
@@ -248,585 +262,585 @@ button{transition:transform .12s ease}
 @media (prefers-reduced-motion:reduce){.mr-fade,.an-r,.an-l,.an-up{animation:none}}
 `}</style>
 
-<Fade delay={0}>
-<header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
-<div className="flex items-center justify-between">
-<div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v4</span></div>
-<div className="flex items-center gap-2">
-<button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
-<button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
-<button onClick={() => setProfile(true)}><Avatar user={me} size={34} /></button>
-</div>
-</div>
-</header>
-</Fade>
+      <Fade delay={0}>
+        <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v5</span></div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
+              <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
+              <button onClick={() => setProfile(true)}><Avatar user={me} size={34} /></button>
+            </div>
+          </div>
+        </header>
+      </Fade>
 
-<main className="px-4 -mt-3 overflow-hidden" onTouchStart={onTStart} onTouchEnd={onTEnd}>
-<div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
-{tab === "home" && <HomeTab state={state} me={me} isOwner={isOwner} go={goTab} />}
-{tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} update={update} />}
-{tab === "uang" && <UangTab state={state} me={me} update={update} />}
-{tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} update={update} />}
-{tab === "task" && <TaskTab state={state} me={me} update={update} />}
-{tab === "tim" && <TimTab state={state} update={update} />}
-{tab === "laporan" && <LaporanTab state={state} />}
-</div>
-</main>
+      <main className="px-4 -mt-3 overflow-hidden" onTouchStart={onTStart} onTouchEnd={onTEnd}>
+        <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
+          {tab === "home" && <HomeTab state={state} me={me} isOwner={isOwner} go={goTab} />}
+          {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} update={update} />}
+          {tab === "uang" && <UangTab state={state} me={me} update={update} />}
+          {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} update={update} />}
+          {tab === "task" && <TaskTab state={state} me={me} update={update} />}
+          {tab === "tim" && <TimTab state={state} update={update} />}
+          {tab === "laporan" && <LaporanTab state={state} />}
+        </div>
+      </main>
 
-<nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
-{tabs.map((t) => {
-const Ic = t.icon; const on = tab === t.id;
-return (
-<button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 py-1 rounded-xl flex-1 active:scale-90 transition ${on ? "text-orange-500" : "s-muted"}`}>
-<Ic size={19} strokeWidth={on ? 2.5 : 2} /><span className="text-[9px] font-semibold">{t.label}</span>
-</button>
-);
-})}
-</nav>
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
+        {tabs.map((t) => {
+          const Ic = t.icon; const on = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 py-1 rounded-xl flex-1 active:scale-90 transition ${on ? "text-orange-500" : "s-muted"}`}>
+              <Ic size={19} strokeWidth={on ? 2.5 : 2} /><span className="text-[9px] font-semibold">{t.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
-<ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} />
+      <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} />
 
-<ProfileModal open={profile} me={me} onClose={() => setProfile(false)} update={update} setMe={setMe} dark={dark} toggleDark={toggleDark} onLogout={() => { setProfile(false); setMe(null); setTab("home"); }} />
-</div>
-);
+      <ProfileModal open={profile} me={me} onClose={() => setProfile(false)} update={update} setMe={setMe} dark={dark} toggleDark={toggleDark} onLogout={() => { setProfile(false); setMe(null); setTab("home"); }} />
+    </div>
+  );
 }
 
 /* ============ Auth ============ */
 function Auth({ state, onLogin, update }) {
-const [sel, setSel] = useState(null);
-const [pw, setPw] = useState(""); const [pw2, setPw2] = useState(""); const [err, setErr] = useState("");
-const back = () => { setSel(null); setPw(""); setPw2(""); setErr(""); };
-const firstTime = sel && sel.role === "staff" && !sel.password;
-const submit = () => {
-if (sel.role === "owner") { pw === OWNER_PW ? onLogin(sel) : setErr("Password salah."); return; }
-if (firstTime) {
-if (pw.length < 4) return setErr("Password minimal 4 karakter.");
-if (pw !== pw2) return setErr("Konfirmasi password tidak sama.");
-update((s) => { s.users.find((u) => u.id === sel.id).password = pw; return s; });
-onLogin({ ...sel, password: pw });
-} else { pw === sel.password ? onLogin(sel) : setErr("Password salah."); }
-};
-return (
-<div className="min-h-screen bg-slate-950 text-white grid place-items-center p-6">
-<div className="w-full max-w-sm">
-<img src={LOGO} alt="Motorell" className="h-10 mx-auto mb-1" />
-<p className="text-center text-orange-400 font-bold tracking-[0.3em] text-xs mb-8">OPS</p>
-{!sel ? (
-<>
-<p className="text-center text-slate-400 text-sm mb-6">Pilih akun buat masuk</p>
-<div className="space-y-2.5">
-{state.users.map((u) => (
-<button key={u.id} onClick={() => setSel(u)} className="w-full flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl px-4 py-3 text-left transition">
-<Avatar user={u} size={40} />
-<div className="flex-1"><p className="font-semibold">{u.name}</p><p className="text-xs text-slate-400">{u.position}</p></div>
-{u.role === "owner" && <ShieldCheck size={18} className="text-orange-400" />}
-</button>
-))}
-</div>
-</>
-) : (
-<div className="mt-2">
-<button onClick={back} className="flex items-center gap-1 text-slate-400 text-sm mb-5"><ArrowLeft size={16} /> Ganti akun</button>
-<div className="flex items-center gap-3 mb-5"><Avatar user={sel} size={44} /><div><p className="font-semibold">{sel.name}</p><p className="text-xs text-slate-400">{sel.position}</p></div></div>
-{firstTime && <p className="text-xs text-amber-400 mb-3 bg-amber-400/10 rounded-xl px-3 py-2">Login pertama — buat password kamu sendiri.</p>}
-<div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && !firstTime && submit()} placeholder={firstTime ? "Buat password baru" : "Masukkan password"} className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-orange-400" /></div>
-{firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-orange-400" /></div>}
-{err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
-<Btn onClick={submit} className="w-full">{firstTime ? "Buat & masuk" : "Masuk"}</Btn>
-</div>
-)}
-</div>
-</div>
-);
+  const [sel, setSel] = useState(null);
+  const [pw, setPw] = useState(""); const [pw2, setPw2] = useState(""); const [err, setErr] = useState("");
+  const back = () => { setSel(null); setPw(""); setPw2(""); setErr(""); };
+  const firstTime = sel && sel.role === "staff" && !sel.password;
+  const submit = () => {
+    if (sel.role === "owner") { pw === OWNER_PW ? onLogin(sel) : setErr("Password salah."); return; }
+    if (firstTime) {
+      if (pw.length < 4) return setErr("Password minimal 4 karakter.");
+      if (pw !== pw2) return setErr("Konfirmasi password tidak sama.");
+      update((s) => { s.users.find((u) => u.id === sel.id).password = pw; return s; });
+      onLogin({ ...sel, password: pw });
+    } else { pw === sel.password ? onLogin(sel) : setErr("Password salah."); }
+  };
+  return (
+    <div className="min-h-screen bg-slate-950 text-white grid place-items-center p-6">
+      <div className="w-full max-w-sm">
+        <img src={LOGO} alt="Motorell" className="h-10 mx-auto mb-1" />
+        <p className="text-center text-orange-400 font-bold tracking-[0.3em] text-xs mb-8">OPS</p>
+        {!sel ? (
+          <>
+            <p className="text-center text-slate-400 text-sm mb-6">Pilih akun buat masuk</p>
+            <div className="space-y-2.5">
+              {state.users.map((u) => (
+                <button key={u.id} onClick={() => setSel(u)} className="w-full flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl px-4 py-3 text-left transition">
+                  <Avatar user={u} size={40} />
+                  <div className="flex-1"><p className="font-semibold">{u.name}</p><p className="text-xs text-slate-400">{u.position}</p></div>
+                  {u.role === "owner" && <ShieldCheck size={18} className="text-orange-400" />}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="mt-2">
+            <button onClick={back} className="flex items-center gap-1 text-slate-400 text-sm mb-5"><ArrowLeft size={16} /> Ganti akun</button>
+            <div className="flex items-center gap-3 mb-5"><Avatar user={sel} size={44} /><div><p className="font-semibold">{sel.name}</p><p className="text-xs text-slate-400">{sel.position}</p></div></div>
+            {firstTime && <p className="text-xs text-amber-400 mb-3 bg-amber-400/10 rounded-xl px-3 py-2">Login pertama — buat password kamu sendiri.</p>}
+            <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && !firstTime && submit()} placeholder={firstTime ? "Buat password baru" : "Masukkan password"} className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-orange-400" /></div>
+            {firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-orange-400" /></div>}
+            {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
+            <Btn onClick={submit} className="w-full">{firstTime ? "Buat & masuk" : "Masuk"}</Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ============ Profile ============ */
 function ProfileModal({ open, me, onClose, update, setMe, dark, toggleDark, onLogout }) {
-const ref = useRef(null);
-const [snd, setSnd] = useState(SOUND_ON);
-const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 256, 0.72); if (!data) return; update((s) => { const u = s.users.find((x) => x.id === me.id); if (u) u.avatar = data; return s; }); setMe((prev) => ({ ...prev, avatar: data })); };
-return (
-<Modal open={open} onClose={onClose} title="Profil">
-<div className="flex flex-col items-center gap-3 mb-5">
-<Avatar user={me} size={84} />
-<input ref={ref} type="file" accept="image/*" className="hidden" onChange={pick} />
-<button onClick={() => ref.current && ref.current.click()} className="text-orange-500 text-sm font-semibold flex items-center gap-1"><ImagePlus size={15} />Ganti foto dari galeri</button>
-<div className="text-center"><p className="font-bold">{me.name}</p><p className="text-xs s-muted">{me.position}</p></div>
-</div>
-<div className="flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-3">
-<span className="text-sm font-semibold flex items-center gap-2">{dark ? <Moon size={16} /> : <Sun size={16} />}Mode gelap</span>
-<button onClick={toggleDark} className={`w-12 h-7 rounded-full p-1 transition ${dark ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${dark ? "translate-x-5" : ""}`} /></button>
-</div>
-<div className="flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-3">
-<span className="text-sm font-semibold flex items-center gap-2">{snd ? <Volume2 size={16} /> : <VolumeX size={16} />}Suara klik</span>
-<button onClick={() => { SOUND_ON = !snd; setSnd(SOUND_ON); window.storage.set("motorell-sound", SOUND_ON ? "1" : "0").catch(() => {}); }} className={`w-12 h-7 rounded-full p-1 transition ${snd ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${snd ? "translate-x-5" : ""}`} /></button>
-</div>
-<Btn variant="ghost" onClick={onLogout} className="w-full"><LogOut size={15} className="inline mr-1.5 -mt-0.5" />Keluar</Btn>
-</Modal>
-);
+  const ref = useRef(null);
+  const [snd, setSnd] = useState(SOUND_ON);
+  const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 256, 0.72); if (!data) return; update((s) => { const u = s.users.find((x) => x.id === me.id); if (u) u.avatar = data; return s; }); setMe((prev) => ({ ...prev, avatar: data })); };
+  return (
+    <Modal open={open} onClose={onClose} title="Profil">
+      <div className="flex flex-col items-center gap-3 mb-5">
+        <Avatar user={me} size={84} />
+        <input ref={ref} type="file" accept="image/*" className="hidden" onChange={pick} />
+        <button onClick={() => ref.current && ref.current.click()} className="text-orange-500 text-sm font-semibold flex items-center gap-1"><ImagePlus size={15} />Ganti foto dari galeri</button>
+        <div className="text-center"><p className="font-bold">{me.name}</p><p className="text-xs s-muted">{me.position}</p></div>
+      </div>
+      <div className="flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-3">
+        <span className="text-sm font-semibold flex items-center gap-2">{dark ? <Moon size={16} /> : <Sun size={16} />}Mode gelap</span>
+        <button onClick={toggleDark} className={`w-12 h-7 rounded-full p-1 transition ${dark ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${dark ? "translate-x-5" : ""}`} /></button>
+      </div>
+      <div className="flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-3">
+        <span className="text-sm font-semibold flex items-center gap-2">{snd ? <Volume2 size={16} /> : <VolumeX size={16} />}Suara klik</span>
+        <button onClick={() => { SOUND_ON = !snd; setSnd(SOUND_ON); window.storage.set("motorell-sound", SOUND_ON ? "1" : "0").catch(() => {}); }} className={`w-12 h-7 rounded-full p-1 transition ${snd ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${snd ? "translate-x-5" : ""}`} /></button>
+      </div>
+      <Btn variant="ghost" onClick={onLogout} className="w-full"><LogOut size={15} className="inline mr-1.5 -mt-0.5" />Keluar</Btn>
+    </Modal>
+  );
 }
 
 /* ============ Beranda ============ */
 function expByUnit(state, unitId) { return state.expenses.filter((e) => e.unitId === unitId).reduce((a, e) => a + e.amount, 0); }
 
 function HomeTab({ state, me, isOwner, go }) {
-const g = greeting();
-const proses = state.units.filter((u) => u.status === "proses").length;
-const monthSold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).length;
-const totalExp = state.expenses.reduce((a, e) => a + e.amount, 0);
-const sold = state.units.filter((u) => u.status === "terjual");
-const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
-const todayAbsen = state.attendance.filter((a) => a.date === today());
-const myTasks = state.tasks.filter((t) => t.userId === me.id && !t.done);
-const myExtras = state.extras.filter((x) => x.userId === me.id && inMonth(x.date, month()));
-const extraTotal = myExtras.reduce((a, x) => a + x.amount, 0);
+  const g = greeting();
+  const proses = state.units.filter((u) => u.status === "proses").length;
+  const monthSold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).length;
+  const totalExp = state.expenses.reduce((a, e) => a + e.amount, 0);
+  const sold = state.units.filter((u) => u.status === "terjual");
+  const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
+  const todayAbsen = state.attendance.filter((a) => a.date === today());
+  const myTasks = state.tasks.filter((t) => t.userId === me.id && !t.done);
+  const myExtras = state.extras.filter((x) => x.userId === me.id && inMonth(x.date, month()));
+  const extraTotal = myExtras.reduce((a, x) => a + x.amount, 0);
 
-return (
-<div className="space-y-3 pt-1">
-<Fade delay={40}><div className="pt-6 pb-1"><p className="text-2xl font-extrabold leading-snug">{g.t}, {g.e}</p><p className="text-base s-muted mt-0.5">{me.name}</p></div></Fade>
+  return (
+    <div className="space-y-3 pt-1">
+      <Fade delay={40}><div className="pt-6 pb-1"><p className="text-2xl font-extrabold leading-snug">{g.t}, {g.e}</p><p className="text-base s-muted mt-0.5">{me.name}</p></div></Fade>
 
-<Fade delay={120}>
-{isOwner ? (
-<div className="grid grid-cols-2 gap-3">
-<Stat label="Total Unit" value={state.units.length} sub={`${proses} proses`} icon={Bike} color="#f97316" />
-<Stat label="Hadir Hari Ini" value={todayAbsen.length} sub={`dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
-<Stat label="Total Pengeluaran" value={rp(totalExp)} small icon={Wallet} color="#a855f7" />
-<Stat label="Profit (terjual)" value={rp(profit)} small icon={TrendingUp} color="#10b981" />
-</div>
-) : (
-<div className="space-y-3">
-<div className="grid grid-cols-2 gap-3">
-<StatStaff label="Unit Dalam Proses" value={proses} icon={Bike} color="#f97316" />
-<StatStaff label="Konten Ter-upload" value={state.media.length} icon={Video} color="#3b82f6" />
-</div>
-<StatStaff label="Unit Terjual Bulan Ini" value={monthSold} icon={TrendingUp} color="#10b981" />
-</div>
-)}
-</Fade>
+      <Fade delay={120}>
+        {isOwner ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Stat label="Total Unit" value={state.units.length} sub={`${proses} proses`} icon={Bike} color="#f97316" />
+            <Stat label="Hadir Hari Ini" value={todayAbsen.length} sub={`dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
+            <Stat label="Total Pengeluaran" value={rp(totalExp)} small icon={Wallet} color="#a855f7" />
+            <Stat label="Profit (terjual)" value={rp(profit)} small icon={TrendingUp} color="#10b981" />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <StatStaff label="Unit Dalam Proses" value={proses} icon={Bike} color="#f97316" />
+              <StatStaff label="Konten Ter-upload" value={state.media.length} icon={Video} color="#3b82f6" />
+            </div>
+            <StatStaff label="Unit Terjual Bulan Ini" value={monthSold} icon={TrendingUp} color="#10b981" />
+          </div>
+        )}
+      </Fade>
 
-{!isOwner && extraTotal > 0 && (
-<Fade delay={180}>
-<Card className="p-4 border-orange-200" >
-<div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: "#f9731622" }}><Gift size={16} className="text-orange-500" /></div><div><p className="text-xs font-semibold s-muted">Extra cash dari Owner (bulan ini)</p><p className="text-xl font-extrabold">{rp(extraTotal)}</p></div></div>
-<div className="space-y-1">
-{myExtras.slice(0, 4).map((x) => (<div key={x.id} className="flex justify-between text-xs s-muted"><span>{x.note || "Bonus"}</span><span className="font-bold text-orange-500">+{rp(x.amount)}</span></div>))}
-</div>
-</Card>
-</Fade>
-)}
+      {!isOwner && extraTotal > 0 && (
+        <Fade delay={180}>
+          <Card className="p-4 border-orange-200" >
+            <div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: "#f9731622" }}><Gift size={16} className="text-orange-500" /></div><div><p className="text-xs font-semibold s-muted">Extra cash dari Owner (bulan ini)</p><p className="text-xl font-extrabold">{rp(extraTotal)}</p></div></div>
+            <div className="space-y-1">
+              {myExtras.slice(0, 4).map((x) => (<div key={x.id} className="flex justify-between text-xs s-muted"><span>{x.note || "Bonus"}</span><span className="font-bold text-orange-500">+{rp(x.amount)}</span></div>))}
+            </div>
+          </Card>
+        </Fade>
+      )}
 
-{myTasks.length > 0 && (
-<Fade delay={220}>
-<Card className="p-4">
-<p className="font-bold text-sm mb-2">Task kamu belum kelar ({myTasks.length})</p>
-<div className="space-y-1.5">{myTasks.slice(0, 3).map((t) => <div key={t.id} className="flex items-center gap-2 text-sm s-muted"><Circle size={14} /> {t.title}</div>)}</div>
-<button onClick={() => go(isOwner ? "tim" : "task")} className="text-orange-500 text-xs font-bold mt-2">Lihat semua →</button>
-</Card>
-</Fade>
-)}
+      {myTasks.length > 0 && (
+        <Fade delay={220}>
+          <Card className="p-4">
+            <p className="font-bold text-sm mb-2">Task kamu belum kelar ({myTasks.length})</p>
+            <div className="space-y-1.5">{myTasks.slice(0, 3).map((t) => <div key={t.id} className="flex items-center gap-2 text-sm s-muted"><Circle size={14} /> {t.title}</div>)}</div>
+            <button onClick={() => go(isOwner ? "tim" : "task")} className="text-orange-500 text-xs font-bold mt-2">Lihat semua →</button>
+          </Card>
+        </Fade>
+      )}
 
-<Fade delay={280}>
-<Card className="p-4">
-<p className="font-bold text-sm mb-3">Akses cepat</p>
-<div className="grid grid-cols-2 gap-2">
-<Quick label="Absen masuk" icon={Clock} onClick={() => go("absen")} />
-<Quick label="Catat pengeluaran" icon={Wallet} onClick={() => go("uang")} />
-<Quick label="Upload konten" icon={Video} onClick={() => go("media")} />
-<Quick label={isOwner ? "Laporan bulanan" : "Task harian"} icon={isOwner ? PieIcon : CheckSquare} onClick={() => go(isOwner ? "laporan" : "task")} />
-</div>
-</Card>
-</Fade>
-</div>
-);
+      <Fade delay={280}>
+        <Card className="p-4">
+          <p className="font-bold text-sm mb-3">Akses cepat</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Quick label="Absen masuk" icon={Clock} onClick={() => go("absen")} />
+            <Quick label="Catat pengeluaran" icon={Wallet} onClick={() => go("uang")} />
+            <Quick label="Upload konten" icon={Video} onClick={() => go("media")} />
+            <Quick label={isOwner ? "Laporan bulanan" : "Task harian"} icon={isOwner ? PieIcon : CheckSquare} onClick={() => go(isOwner ? "laporan" : "task")} />
+          </div>
+        </Card>
+      </Fade>
+    </div>
+  );
 }
 const Stat = ({ label, value, sub, icon: Ic, color, small }) => (
-<Card className="p-3.5"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`}>{value}</p><p className="text-[11px] s-muted">{sub || label}</p></Card>
+  <Card className="p-3.5"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`}>{value}</p><p className="text-[11px] s-muted">{sub || label}</p></Card>
 );
 const StatStaff = ({ label, value, icon: Ic, color }) => (
-<Card className="p-4"><div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className="text-xs font-semibold s-muted leading-tight">{label}</p></div><p className="text-3xl font-extrabold leading-none">{value}</p></Card>
+  <Card className="p-4"><div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className="text-xs font-semibold s-muted leading-tight">{label}</p></div><p className="text-3xl font-extrabold leading-none">{value}</p></Card>
 );
 const Quick = ({ label, icon: Ic, onClick }) => (
-<button onClick={onClick} className="flex items-center gap-2 s-soft rounded-xl px-3 py-3 text-left"><Ic size={16} className="text-orange-500" /><span className="text-xs font-semibold">{label}</span></button>
+  <button onClick={onClick} className="flex items-center gap-2 s-soft rounded-xl px-3 py-3 text-left"><Ic size={16} className="text-orange-500" /><span className="text-xs font-semibold">{label}</span></button>
 );
 
 /* ============ Absensi ============ */
 function AbsenTab({ state, me, isOwner, update }) {
-const myToday = state.attendance.find((a) => a.userId === me.id && a.date === today());
-const live = state.lives.find((l) => l.date === today());
-const [photo, setPhoto] = useState(""); const [liveLink, setLiveLink] = useState(""); const [livePhoto, setLivePhoto] = useState(""); const [zoom, setZoom] = useState("");
-const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
-const clockIn = () => { if (!photo) return; update((s) => { s.attendance.push({ id: uid(), userId: me.id, date: today(), clockIn: now(), photo }); return s; }); setPhoto(""); };
-const markLive = () => { if (!liveLink && !livePhoto) return; update((s) => { s.lives.push({ id: uid(), date: today(), by: me.id, link: liveLink, photo: livePhoto }); return s; }); setLiveLink(""); setLivePhoto(""); };
-const staff = state.users.filter((u) => u.role !== "owner");
+  const myToday = state.attendance.find((a) => a.userId === me.id && a.date === today());
+  const live = state.lives.find((l) => l.date === today());
+  const [photo, setPhoto] = useState(""); const [liveLink, setLiveLink] = useState(""); const [livePhoto, setLivePhoto] = useState(""); const [zoom, setZoom] = useState("");
+  const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
+  const clockIn = () => { if (!photo) return; update((s) => { s.attendance.push({ id: uid(), userId: me.id, date: today(), clockIn: now(), photo }); return s; }); setPhoto(""); };
+  const markLive = () => { if (!liveLink && !livePhoto) return; update((s) => { s.lives.push({ id: uid(), date: today(), by: me.id, link: liveLink, photo: livePhoto }); return s; }); setLiveLink(""); setLivePhoto(""); };
+  const staff = state.users.filter((u) => u.role !== "owner");
 
-return (
-<div className="space-y-3 pt-3">
-{!isOwner && (
-<Card className="p-4">
-<p className="font-bold mb-1">Absensi hari ini</p>
-<p className="text-xs s-muted mb-3">{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}</p>
-{!myToday ? (
-<div className="space-y-3"><div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto di kantor (wajib)</p><PhotoInput value={photo} onChange={setPhoto} label="Foto selfie / lokasi kantor" /></div><Btn onClick={clockIn} disabled={!photo} className="w-full"><Clock size={16} className="inline mr-1.5 -mt-0.5" />Absen masuk</Btn></div>
-) : (
-<div className="flex items-center gap-3 tg-emerald rounded-xl px-3 py-2.5">{myToday.photo && <img src={myToday.photo} onClick={() => setZoom(myToday.photo)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><BadgeCheck size={18} /> Hadir · masuk {myToday.clockIn}</div></div>
-)}
-<div className="border-t s-border mt-4 pt-3">
-<p className="text-sm font-semibold mb-2 flex items-center gap-1.5"><Video size={15} className="text-rose-500" /> Live TikTok tim (wajib)</p>
-{live ? <LiveProof live={live} userName={userName} setZoom={setZoom} /> : (
-<div className="space-y-2"><input className={inputCls} placeholder="Tempel link rekaman / profil live…" value={liveLink} onChange={(e) => setLiveLink(e.target.value)} /><PhotoInput value={livePhoto} onChange={setLivePhoto} label="Foto bukti live (opsional)" /><Btn variant="dark" onClick={markLive} disabled={!liveLink && !livePhoto} className="w-full">Tandai tim sudah live</Btn></div>
-)}
-</div>
-</Card>
-)}
+  return (
+    <div className="space-y-3 pt-3">
+      {!isOwner && (
+        <Card className="p-4">
+          <p className="font-bold mb-1">Absensi hari ini</p>
+          <p className="text-xs s-muted mb-3">{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}</p>
+          {!myToday ? (
+            <div className="space-y-3"><div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto di kantor (wajib)</p><PhotoInput value={photo} onChange={setPhoto} label="Foto selfie / lokasi kantor" /></div><Btn onClick={clockIn} disabled={!photo} className="w-full"><Clock size={16} className="inline mr-1.5 -mt-0.5" />Absen masuk</Btn></div>
+          ) : (
+            <div className="flex items-center gap-3 tg-emerald rounded-xl px-3 py-2.5">{myToday.photo && <img src={myToday.photo} onClick={() => setZoom(myToday.photo)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><BadgeCheck size={18} /> Hadir · masuk {myToday.clockIn}</div></div>
+          )}
+          <div className="border-t s-border mt-4 pt-3">
+            <p className="text-sm font-semibold mb-2 flex items-center gap-1.5"><Video size={15} className="text-rose-500" /> Live TikTok tim (wajib)</p>
+            {live ? <LiveProof live={live} userName={userName} setZoom={setZoom} /> : (
+              <div className="space-y-2"><input className={inputCls} placeholder="Tempel link rekaman / profil live…" value={liveLink} onChange={(e) => setLiveLink(e.target.value)} /><PhotoInput value={livePhoto} onChange={setLivePhoto} label="Foto bukti live (opsional)" /><Btn variant="dark" onClick={markLive} disabled={!liveLink && !livePhoto} className="w-full">Tandai tim sudah live</Btn></div>
+            )}
+          </div>
+        </Card>
+      )}
 
-{isOwner && (
-<>
-<p className="font-bold text-lg pt-1">Laporan pegawai masuk</p>
-<Card className="p-4">
-<p className="font-bold mb-3 text-sm">Kehadiran hari ini</p>
-<div className="space-y-2">
-{staff.map((u) => {
-const a = state.attendance.find((x) => x.userId === u.id && x.date === today());
-return (
-<div key={u.id} className="flex items-center justify-between">
-<div className="flex items-center gap-2">{a?.photo ? <img src={a.photo} onClick={() => setZoom(a.photo)} className="w-9 h-9 rounded-lg object-cover" alt="" /> : <Avatar user={u} size={36} />}<span className="text-sm font-medium">{u.name} <span className="s-muted text-xs">· {u.position}</span></span></div>
-<div className="flex items-center gap-1.5">{a ? <Tag color="emerald">Hadir {a.clockIn}</Tag> : <Tag color="slate">Belum</Tag>}{live ? <Tag color="rose">Live ✓</Tag> : <Tag color="amber">No live</Tag>}</div>
-</div>
-);
-})}
-</div>
-</Card>
-<Card className="p-4">
-<p className="font-bold mb-2 text-sm flex items-center gap-1.5"><Video size={15} className="text-rose-500" />Live TikTok tim hari ini</p>
-{live ? <LiveProof live={live} userName={userName} setZoom={setZoom} /> : <p className="text-sm s-muted">Tim belum live hari ini.</p>}
-</Card>
-</>
-)}
-<Lightbox src={zoom} onClose={() => setZoom("")} />
-</div>
-);
+      {isOwner && (
+        <>
+          <p className="font-bold text-lg pt-1">Laporan pegawai masuk</p>
+          <Card className="p-4">
+            <p className="font-bold mb-3 text-sm">Kehadiran hari ini</p>
+            <div className="space-y-2">
+              {staff.map((u) => {
+                const a = state.attendance.find((x) => x.userId === u.id && x.date === today());
+                return (
+                  <div key={u.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">{a?.photo ? <img src={a.photo} onClick={() => setZoom(a.photo)} className="w-9 h-9 rounded-lg object-cover" alt="" /> : <Avatar user={u} size={36} />}<span className="text-sm font-medium">{u.name} <span className="s-muted text-xs">· {u.position}</span></span></div>
+                    <div className="flex items-center gap-1.5">{a ? <Tag color="emerald">Hadir {a.clockIn}</Tag> : <Tag color="slate">Belum</Tag>}{live ? <Tag color="rose">Live ✓</Tag> : <Tag color="amber">No live</Tag>}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+          <Card className="p-4">
+            <p className="font-bold mb-2 text-sm flex items-center gap-1.5"><Video size={15} className="text-rose-500" />Live TikTok tim hari ini</p>
+            {live ? <LiveProof live={live} userName={userName} setZoom={setZoom} /> : <p className="text-sm s-muted">Tim belum live hari ini.</p>}
+          </Card>
+        </>
+      )}
+      <Lightbox src={zoom} onClose={() => setZoom("")} />
+    </div>
+  );
 }
 function LiveProof({ live, userName, setZoom }) {
-return (
-<div className="tg-rose rounded-xl p-3">
-<div className="flex items-center gap-2 text-sm font-semibold mb-1"><BadgeCheck size={18} /> Tim sudah live · oleh {userName(live.by)}</div>
-<p className="text-[11px] opacity-80 mb-2">Semua pegawai otomatis terverifikasi sudah live.</p>
-<div className="flex items-center gap-2">{live.link && <a href={live.link} target="_blank" rel="noreferrer" className="text-xs underline break-all flex items-center gap-1"><LinkIcon size={12} />Link bukti</a>}{live.photo && <img src={live.photo} onClick={() => setZoom(live.photo)} className="w-10 h-10 rounded-lg object-cover" alt="" />}</div>
-</div>
-);
+  return (
+    <div className="tg-rose rounded-xl p-3">
+      <div className="flex items-center gap-2 text-sm font-semibold mb-1"><BadgeCheck size={18} /> Tim sudah live · oleh {userName(live.by)}</div>
+      <p className="text-[11px] opacity-80 mb-2">Semua pegawai otomatis terverifikasi sudah live.</p>
+      <div className="flex items-center gap-2">{live.link && <a href={live.link} target="_blank" rel="noreferrer" className="text-xs underline break-all flex items-center gap-1"><LinkIcon size={12} />Link bukti</a>}{live.photo && <img src={live.photo} onClick={() => setZoom(live.photo)} className="w-10 h-10 rounded-lg object-cover" alt="" />}</div>
+    </div>
+  );
 }
 
 /* ============ Keuangan ============ */
 function UangTab({ state, me, update }) {
-const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
-return (
-<div className="space-y-3 pt-3">
-<div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
-{state.units.length === 0 && <Card className="p-8 text-center"><Bike size={28} className="mx-auto text-orange-500 mb-2" /><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
-{state.units.map((u) => {
-const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
-return (
-<Card key={u.id} className="p-4">
-<div className="flex items-start justify-between" onClick={() => setDetail(u.id)}>
-<div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p></div>
-<Tag color={u.status === "terjual" ? "emerald" : u.status === "siap" ? "blue" : "amber"}>{u.status === "terjual" ? "Terjual" : u.status === "siap" ? "Siap jual" : "Proses"}</Tag>
-</div>
-<div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} accent="#f97316" /><Read label="Total modal" value={rp(modal)} /></div>
-<div className="flex items-center justify-between mt-3 pt-3 border-t s-border"><span className="text-xs s-muted">{u.sellPrice ? "Target jual " + rp(u.sellPrice) : "Belum ada harga jual"}</span>{profit !== null && <span className={`text-sm font-extrabold flex items-center gap-1 ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{rp(profit)}</span>}</div>
-<Btn variant="ghost" onClick={() => setExpModal({ mode: "add", unitId: u.id })} className="w-full mt-3"><Plus size={15} className="inline mr-1 -mt-0.5" />Catat pengeluaran</Btn>
-</Card>
-);
-})}
-<AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} />
-<UnitDetailModal unitId={detail} state={state} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
-<ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
-</div>
-);
+  const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
+  return (
+    <div className="space-y-3 pt-3">
+      <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
+      {state.units.length === 0 && <Card className="p-8 text-center"><Bike size={28} className="mx-auto text-orange-500 mb-2" /><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
+      {state.units.map((u) => {
+        const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
+        return (
+          <Card key={u.id} className="p-4">
+            <div className="flex items-start justify-between" onClick={() => setDetail(u.id)}>
+              <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p></div>
+              <Tag color={u.status === "terjual" ? "emerald" : u.status === "siap" ? "blue" : "amber"}>{u.status === "terjual" ? "Terjual" : u.status === "siap" ? "Siap jual" : "Proses"}</Tag>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} accent="#f97316" /><Read label="Total modal" value={rp(modal)} /></div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t s-border"><span className="text-xs s-muted">{u.sellPrice ? "Target jual " + rp(u.sellPrice) : "Belum ada harga jual"}</span>{profit !== null && <span className={`text-sm font-extrabold flex items-center gap-1 ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{rp(profit)}</span>}</div>
+            <Btn variant="ghost" onClick={() => setExpModal({ mode: "add", unitId: u.id })} className="w-full mt-3"><Plus size={15} className="inline mr-1 -mt-0.5" />Catat pengeluaran</Btn>
+          </Card>
+        );
+      })}
+      <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} />
+      <UnitDetailModal unitId={detail} state={state} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
+      <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
+    </div>
+  );
 }
 const Read = ({ label, value, accent }) => <div className="s-soft rounded-xl py-2 px-3 text-center"><p className="text-[10px] s-muted mb-0.5">{label}</p><p className="text-sm font-bold break-words leading-tight" style={accent ? { color: accent } : {}}>{value}</p></div>;
 
 function AddUnitModal({ open, onClose, update }) {
-const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "" });
-const save = () => { if (!f.name) return; update((s) => { s.units.push({ id: uid(), name: f.name, plate: f.plate, buyPrice: +f.buyPrice || 0, sellPrice: +f.sellPrice || 0, status: "proses", investorCode: f.investorCode.trim(), soldAt: null }); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "" }); onClose(); };
-return (
-<Modal open={open} onClose={onClose} title="Tambah unit motor">
-<Field label="Nama / tipe motor"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Honda Beat 2019" /></Field>
-<Field label="Plat nomor"><input className={inputCls} value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="B 1234 XYZ" /></Field>
-<div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
-<Field label="Kode investor (opsional)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA (uang investor siapa)" /></Field>
-<Btn onClick={save} className="w-full mt-2">Simpan unit</Btn>
-</Modal>
-);
+  const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "" });
+  const save = () => { if (!f.name) return; update((s) => { s.units.push({ id: uid(), name: f.name, plate: f.plate, buyPrice: +f.buyPrice || 0, sellPrice: +f.sellPrice || 0, status: "proses", investorCode: f.investorCode.trim(), soldAt: null }); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "" }); onClose(); };
+  return (
+    <Modal open={open} onClose={onClose} title="Tambah unit motor">
+      <Field label="Nama / tipe motor"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Honda Beat 2019" /></Field>
+      <Field label="Plat nomor"><input className={inputCls} value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="B 1234 XYZ" /></Field>
+      <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
+      <Field label="Kode investor (opsional)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA (uang investor siapa)" /></Field>
+      <Btn onClick={save} className="w-full mt-2">Simpan unit</Btn>
+    </Modal>
+  );
 }
 function ExpenseModal({ data, units, me, onClose, update }) {
-const editing = data?.mode === "edit"; const unit = units.find((u) => u.id === data?.unitId);
-const [f, setF] = useState({ cat: "service", amount: "", note: "" });
-useEffect(() => { if (data?.mode === "edit" && data.expense) setF({ cat: data.expense.cat, amount: String(data.expense.amount), note: data.expense.note || "" }); else if (data?.mode === "add") setF({ cat: "service", amount: "", note: "" }); }, [data]);
-const save = () => { if (!f.amount) return; update((s) => { if (editing) { const ex = s.expenses.find((x) => x.id === data.expense.id); ex.cat = f.cat; ex.amount = +f.amount; ex.note = f.note; } else s.expenses.push({ id: uid(), unitId: data.unitId, cat: f.cat, amount: +f.amount, note: f.note, by: me.id, date: today() }); return s; }); onClose(); };
-return (
-<Modal open={!!data} onClose={onClose} title={editing ? "Edit pengeluaran" : `Pengeluaran · ${unit?.name || ""}`}>
-<Field label="Kategori"><div className="grid grid-cols-5 gap-1.5">{Object.entries(CATS).map(([k, c]) => { const Ic = c.icon; const on = f.cat === k; return <button key={k} onClick={() => setF({ ...f, cat: k })} className={`flex flex-col items-center gap-1 py-2 rounded-xl border text-[9px] font-semibold ${on ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}><Ic size={15} style={{ color: on ? "#f97316" : c.color }} />{c.label}</button>; })}</div></Field>
-<Field label="Nominal (Rp)"><input type="number" className={inputCls} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="200000" /></Field>
-<Field label="Keterangan"><input className={inputCls} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder={CATS[f.cat].ph} /></Field>
-<Btn onClick={save} className="w-full mt-2">{editing ? "Simpan perubahan" : "Catat pengeluaran"}</Btn>
-</Modal>
-);
+  const editing = data?.mode === "edit"; const unit = units.find((u) => u.id === data?.unitId);
+  const [f, setF] = useState({ cat: "service", amount: "", note: "" });
+  useEffect(() => { if (data?.mode === "edit" && data.expense) setF({ cat: data.expense.cat, amount: String(data.expense.amount), note: data.expense.note || "" }); else if (data?.mode === "add") setF({ cat: "service", amount: "", note: "" }); }, [data]);
+  const save = () => { if (!f.amount) return; update((s) => { if (editing) { const ex = s.expenses.find((x) => x.id === data.expense.id); ex.cat = f.cat; ex.amount = +f.amount; ex.note = f.note; } else s.expenses.push({ id: uid(), unitId: data.unitId, cat: f.cat, amount: +f.amount, note: f.note, by: me.id, date: today() }); return s; }); onClose(); };
+  return (
+    <Modal open={!!data} onClose={onClose} title={editing ? "Edit pengeluaran" : `Pengeluaran · ${unit?.name || ""}`}>
+      <Field label="Kategori"><div className="grid grid-cols-5 gap-1.5">{Object.entries(CATS).map(([k, c]) => { const Ic = c.icon; const on = f.cat === k; return <button key={k} onClick={() => setF({ ...f, cat: k })} className={`flex flex-col items-center gap-1 py-2 rounded-xl border text-[9px] font-semibold ${on ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}><Ic size={15} style={{ color: on ? "#f97316" : c.color }} />{c.label}</button>; })}</div></Field>
+      <Field label="Nominal (Rp)"><input type="number" className={inputCls} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="200000" /></Field>
+      <Field label="Keterangan"><input className={inputCls} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder={CATS[f.cat].ph} /></Field>
+      <Btn onClick={save} className="w-full mt-2">{editing ? "Simpan perubahan" : "Catat pengeluaran"}</Btn>
+    </Modal>
+  );
 }
 function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }) {
-const unit = state.units.find((u) => u.id === unitId); if (!unit) return null;
-const items = state.expenses.filter((e) => e.unitId === unitId);
-const byCat = items.reduce((m, e) => ({ ...m, [e.cat]: (m[e.cat] || 0) + e.amount }), {});
-const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
-const [confirmDel, setConfirmDel] = useState(false);
-useEffect(() => { setConfirmDel(false); }, [unitId]);
-const setField = (k, v) => update((s) => { s.units.find((u) => u.id === unitId)[k] = v; return s; });
-const setStatus = (status) => update((s) => { const u = s.units.find((x) => x.id === unitId); u.status = status; u.soldAt = status === "terjual" ? today() : null; return s; });
-const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
-const delUnit = () => { update((s) => { s.units = s.units.filter((u) => u.id !== unitId); s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
-return (
-<Modal open={!!unitId} onClose={onClose} title="Detail unit">
-<p className="text-[11px] s-muted -mt-2 mb-3">Semua kolom bisa diedit kapan saja.</p>
-<Field label="Nama motor"><input className={inputCls} defaultValue={unit.name} onBlur={(e) => setField("name", e.target.value)} /></Field>
-<Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
-<div className="grid grid-cols-2 gap-2"><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field></div>
-<div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{l}</button>)}</div></div>
-{Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
-<p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
-<div className="space-y-1.5 mb-4">{items.length === 0 && <p className="text-xs s-muted">Belum ada pengeluaran.</p>}{items.map((e) => <div key={e.id} className="flex items-center justify-between s-soft rounded-lg px-3 py-2"><div className="text-sm"><p className="font-medium">{e.note || CATS[e.cat].label}</p><p className="text-[10px] s-muted">{CATS[e.cat].label} · {userName(e.by)} · {e.date}</p></div><div className="flex items-center gap-2"><span className="text-sm font-bold">{rp(e.amount)}</span><button onClick={() => onEditExp(e)} className="s-muted"><Pencil size={14} /></button><button onClick={() => delExp(e.id)} className="text-rose-400"><Trash2 size={14} /></button></div></div>)}</div>
-<Btn variant="ghost" onClick={() => onAddExp(unit.id)} className="w-full"><Plus size={15} className="inline mr-1 -mt-0.5" />Tambah pengeluaran</Btn>
-<div className="mt-3 pt-3 border-t s-border">
-{!confirmDel ? (
-<button onClick={() => setConfirmDel(true)} className="w-full text-rose-500 text-sm font-semibold py-2 flex items-center justify-center gap-1.5"><Trash2 size={15} />Hapus unit ini</button>
-) : (
-<div className="space-y-2">
-<p className="text-xs text-center s-muted">Yakin hapus <b className="s-text">{unit.name}</b> beserta semua pengeluarannya? Tindakan ini permanen.</p>
-<div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmDel(false)}>Batal</Btn><button onClick={delUnit} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white active:scale-[0.97] transition">Hapus</button></div>
-</div>
-)}
-</div>
-</Modal>
-);
+  const unit = state.units.find((u) => u.id === unitId); if (!unit) return null;
+  const items = state.expenses.filter((e) => e.unitId === unitId);
+  const byCat = items.reduce((m, e) => ({ ...m, [e.cat]: (m[e.cat] || 0) + e.amount }), {});
+  const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
+  const [confirmDel, setConfirmDel] = useState(false);
+  useEffect(() => { setConfirmDel(false); }, [unitId]);
+  const setField = (k, v) => update((s) => { s.units.find((u) => u.id === unitId)[k] = v; return s; });
+  const setStatus = (status) => update((s) => { const u = s.units.find((x) => x.id === unitId); u.status = status; u.soldAt = status === "terjual" ? today() : null; return s; });
+  const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
+  const delUnit = () => { update((s) => { s.units = s.units.filter((u) => u.id !== unitId); s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
+  return (
+    <Modal open={!!unitId} onClose={onClose} title="Detail unit">
+      <p className="text-[11px] s-muted -mt-2 mb-3">Semua kolom bisa diedit kapan saja.</p>
+      <Field label="Nama motor"><input className={inputCls} defaultValue={unit.name} onBlur={(e) => setField("name", e.target.value)} /></Field>
+      <Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
+      <div className="grid grid-cols-2 gap-2"><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field></div>
+      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{l}</button>)}</div></div>
+      {Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
+      <p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
+      <div className="space-y-1.5 mb-4">{items.length === 0 && <p className="text-xs s-muted">Belum ada pengeluaran.</p>}{items.map((e) => <div key={e.id} className="flex items-center justify-between s-soft rounded-lg px-3 py-2"><div className="text-sm"><p className="font-medium">{e.note || CATS[e.cat].label}</p><p className="text-[10px] s-muted">{CATS[e.cat].label} · {userName(e.by)} · {e.date}</p></div><div className="flex items-center gap-2"><span className="text-sm font-bold">{rp(e.amount)}</span><button onClick={() => onEditExp(e)} className="s-muted"><Pencil size={14} /></button><button onClick={() => delExp(e.id)} className="text-rose-400"><Trash2 size={14} /></button></div></div>)}</div>
+      <Btn variant="ghost" onClick={() => onAddExp(unit.id)} className="w-full"><Plus size={15} className="inline mr-1 -mt-0.5" />Tambah pengeluaran</Btn>
+      <div className="mt-3 pt-3 border-t s-border">
+        {!confirmDel ? (
+          <button onClick={() => setConfirmDel(true)} className="w-full text-rose-500 text-sm font-semibold py-2 flex items-center justify-center gap-1.5"><Trash2 size={15} />Hapus unit ini</button>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-center s-muted">Yakin hapus <b className="s-text">{unit.name}</b> beserta semua pengeluarannya? Tindakan ini permanen.</p>
+            <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmDel(false)}>Batal</Btn><button onClick={delUnit} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white active:scale-[0.97] transition">Hapus</button></div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
 }
 
 /* ============ Media ============ */
 function MediaTab({ state, me, isOwner, update }) {
-const [link, setLink] = useState(""); const [note, setNote] = useState(""); const [cat, setCat] = useState("ADS"); const [edit, setEdit] = useState(null);
-const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
-const submit = () => { if (!link) return; update((s) => { s.media.unshift({ id: uid(), by: me.id, link, note, category: cat, verified: false, date: today() }); return s; }); setLink(""); setNote(""); setCat("ADS"); };
-const verify = (id) => update((s) => { s.media.find((m) => m.id === id).verified = true; return s; });
-const list = isOwner ? state.media : state.media.filter((m) => m.by === me.id);
-return (
-<div className="space-y-3 pt-3">
-{!isOwner && <Card className="p-4"><p className="font-bold mb-3">Upload konten</p><input className={`${inputCls} mb-2`} placeholder="Link konten (TikTok/IG/YouTube)…" value={link} onChange={(e) => setLink(e.target.value)} /><input className={`${inputCls} mb-2`} placeholder="Judul / keterangan konten" value={note} onChange={(e) => setNote(e.target.value)} /><p className="text-xs font-semibold s-muted mb-1.5">Kategori konten</p><CatChips value={cat} onChange={setCat} /><Btn onClick={submit} className="w-full mt-3"><LinkIcon size={15} className="inline mr-1.5 -mt-0.5" />Kirim untuk verifikasi</Btn></Card>}
-<p className="font-bold text-lg">{isOwner ? "Verifikasi konten" : "Konten kamu"}</p>
-{list.length === 0 && <p className="text-sm s-muted">Belum ada konten.</p>}
-{list.map((m) => { const canEdit = isOwner || m.by === me.id; return (
-<Card key={m.id} className="p-4">
-<div className="flex items-start justify-between gap-2">
-<div className="flex-1"><div className="flex items-center gap-2 mb-1"><Tag color={MCAT_COLOR[m.category] || "slate"}>{m.category}</Tag>{m.verified ? <Tag color="emerald">Terverifikasi</Tag> : <Tag color="amber">Pending</Tag>}</div><p className="font-semibold text-sm">{m.note || "Tanpa judul"}</p><p className="text-[11px] s-muted mb-1">oleh {userName(m.by)} · {m.date}</p><a href={m.link} target="_blank" rel="noreferrer" className="text-xs text-blue-500 break-all flex items-center gap-1"><LinkIcon size={12} />{m.link}</a></div>
-{canEdit && <button onClick={() => setEdit(m)} className="s-muted p-1"><Pencil size={15} /></button>}
-</div>
-{isOwner && !m.verified && <Btn variant="dark" onClick={() => verify(m.id)} className="w-full mt-3"><BadgeCheck size={15} className="inline mr-1.5 -mt-0.5" />Verifikasi</Btn>}
-</Card>
-); })}
-<MediaEditModal item={edit} onClose={() => setEdit(null)} update={update} />
-</div>
-);
+  const [link, setLink] = useState(""); const [note, setNote] = useState(""); const [cat, setCat] = useState("ADS"); const [edit, setEdit] = useState(null);
+  const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
+  const submit = () => { if (!link) return; update((s) => { s.media.unshift({ id: uid(), by: me.id, link, note, category: cat, verified: false, date: today() }); return s; }); setLink(""); setNote(""); setCat("ADS"); };
+  const verify = (id) => update((s) => { s.media.find((m) => m.id === id).verified = true; return s; });
+  const list = isOwner ? state.media : state.media.filter((m) => m.by === me.id);
+  return (
+    <div className="space-y-3 pt-3">
+      {!isOwner && <Card className="p-4"><p className="font-bold mb-3">Upload konten</p><input className={`${inputCls} mb-2`} placeholder="Link konten (TikTok/IG/YouTube)…" value={link} onChange={(e) => setLink(e.target.value)} /><input className={`${inputCls} mb-2`} placeholder="Judul / keterangan konten" value={note} onChange={(e) => setNote(e.target.value)} /><p className="text-xs font-semibold s-muted mb-1.5">Kategori konten</p><CatChips value={cat} onChange={setCat} /><Btn onClick={submit} className="w-full mt-3"><LinkIcon size={15} className="inline mr-1.5 -mt-0.5" />Kirim untuk verifikasi</Btn></Card>}
+      <p className="font-bold text-lg">{isOwner ? "Verifikasi konten" : "Konten kamu"}</p>
+      {list.length === 0 && <p className="text-sm s-muted">Belum ada konten.</p>}
+      {list.map((m) => { const canEdit = isOwner || m.by === me.id; return (
+        <Card key={m.id} className="p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1"><div className="flex items-center gap-2 mb-1"><Tag color={MCAT_COLOR[m.category] || "slate"}>{m.category}</Tag>{m.verified ? <Tag color="emerald">Terverifikasi</Tag> : <Tag color="amber">Pending</Tag>}</div><p className="font-semibold text-sm">{m.note || "Tanpa judul"}</p><p className="text-[11px] s-muted mb-1">oleh {userName(m.by)} · {m.date}</p><a href={m.link} target="_blank" rel="noreferrer" className="text-xs text-blue-500 break-all flex items-center gap-1"><LinkIcon size={12} />{m.link}</a></div>
+            {canEdit && <button onClick={() => setEdit(m)} className="s-muted p-1"><Pencil size={15} /></button>}
+          </div>
+          {isOwner && !m.verified && <Btn variant="dark" onClick={() => verify(m.id)} className="w-full mt-3"><BadgeCheck size={15} className="inline mr-1.5 -mt-0.5" />Verifikasi</Btn>}
+        </Card>
+      ); })}
+      <MediaEditModal item={edit} onClose={() => setEdit(null)} update={update} />
+    </div>
+  );
 }
 function CatChips({ value, onChange }) {
-return <div className="flex flex-wrap gap-1.5">{MEDIA_CATS.map((c) => <button key={c} onClick={() => onChange(c)} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ${value === c ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{c}</button>)}</div>;
+  return <div className="flex flex-wrap gap-1.5">{MEDIA_CATS.map((c) => <button key={c} onClick={() => onChange(c)} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ${value === c ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{c}</button>)}</div>;
 }
 function MediaEditModal({ item, onClose, update }) {
-const [note, setNote] = useState(""); const [cat, setCat] = useState("ADS");
-useEffect(() => { if (item) { setNote(item.note || ""); setCat(item.category || "ADS"); } }, [item]);
-const save = () => { update((s) => { const m = s.media.find((x) => x.id === item.id); m.note = note; m.category = cat; return s; }); onClose(); };
-return <Modal open={!!item} onClose={onClose} title="Edit konten"><Field label="Judul / keterangan"><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} /></Field><Field label="Kategori"><CatChips value={cat} onChange={setCat} /></Field><Btn onClick={save} className="w-full mt-2">Simpan perubahan</Btn></Modal>;
+  const [note, setNote] = useState(""); const [cat, setCat] = useState("ADS");
+  useEffect(() => { if (item) { setNote(item.note || ""); setCat(item.category || "ADS"); } }, [item]);
+  const save = () => { update((s) => { const m = s.media.find((x) => x.id === item.id); m.note = note; m.category = cat; return s; }); onClose(); };
+  return <Modal open={!!item} onClose={onClose} title="Edit konten"><Field label="Judul / keterangan"><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} /></Field><Field label="Kategori"><CatChips value={cat} onChange={setCat} /></Field><Btn onClick={save} className="w-full mt-2">Simpan perubahan</Btn></Modal>;
 }
 
 /* ============ Task ============ */
 function TaskTab({ state, me, update }) {
-const [title, setTitle] = useState("");
-const mine = state.tasks.filter((t) => t.userId === me.id);
-const toggle = (id) => update((s) => { const t = s.tasks.find((x) => x.id === id); t.done = !t.done; return s; });
-const add = () => { if (!title) return; update((s) => { s.tasks.push({ id: uid(), userId: me.id, title, done: false, setBy: "self", date: today() }); return s; }); setTitle(""); };
-const del = (id) => update((s) => { s.tasks = s.tasks.filter((t) => t.id !== id); return s; });
-return (
-<div className="space-y-3 pt-3">
-<p className="font-bold text-lg">Task harian kamu</p>
-<Card className="p-3 flex gap-2"><input className={inputCls} placeholder="Tambah task sendiri…" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} /><Btn onClick={add} className="!px-3"><Plus size={16} /></Btn></Card>
-<Card className="p-2">{mine.length === 0 && <p className="text-sm s-muted p-3">Belum ada task.</p>}{mine.map((t) => <div key={t.id} className="flex items-center gap-3 px-2 py-2.5 border-b s-border last:border-0"><button onClick={() => toggle(t.id)}>{t.done ? <CheckCircle2 size={22} className="text-emerald-500" /> : <Circle size={22} className="s-muted" />}</button><span className={`flex-1 text-sm ${t.done ? "line-through s-muted" : ""}`}>{t.title}</span>{t.setBy === "owner" ? <Tag color="blue">dari Owner</Tag> : <button onClick={() => del(t.id)} className="s-muted"><Trash2 size={15} /></button>}</div>)}</Card>
-<p className="text-[11px] s-muted px-1">Task dari Owner nggak bisa dihapus — cuma bisa kamu centang kalau udah kelar.</p>
-</div>
-);
+  const [title, setTitle] = useState("");
+  const mine = state.tasks.filter((t) => t.userId === me.id);
+  const toggle = (id) => update((s) => { const t = s.tasks.find((x) => x.id === id); t.done = !t.done; return s; });
+  const add = () => { if (!title) return; update((s) => { s.tasks.push({ id: uid(), userId: me.id, title, done: false, setBy: "self", date: today() }); return s; }); setTitle(""); };
+  const del = (id) => update((s) => { s.tasks = s.tasks.filter((t) => t.id !== id); return s; });
+  return (
+    <div className="space-y-3 pt-3">
+      <p className="font-bold text-lg">Task harian kamu</p>
+      <Card className="p-3 flex gap-2"><input className={inputCls} placeholder="Tambah task sendiri…" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} /><Btn onClick={add} className="!px-3"><Plus size={16} /></Btn></Card>
+      <Card className="p-2">{mine.length === 0 && <p className="text-sm s-muted p-3">Belum ada task.</p>}{mine.map((t) => <div key={t.id} className="flex items-center gap-3 px-2 py-2.5 border-b s-border last:border-0"><button onClick={() => toggle(t.id)}>{t.done ? <CheckCircle2 size={22} className="text-emerald-500" /> : <Circle size={22} className="s-muted" />}</button><span className={`flex-1 text-sm ${t.done ? "line-through s-muted" : ""}`}>{t.title}</span>{t.setBy === "owner" ? <Tag color="blue">dari Owner</Tag> : <button onClick={() => del(t.id)} className="s-muted"><Trash2 size={15} /></button>}</div>)}</Card>
+      <p className="text-[11px] s-muted px-1">Task dari Owner nggak bisa dihapus — cuma bisa kamu centang kalau udah kelar.</p>
+    </div>
+  );
 }
 
 /* ============ Tim ============ */
 function TimTab({ state, update }) {
-const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null);
-const [f, setF] = useState({ name: "", position: "Mekanik" }); const [taskTitle, setTaskTitle] = useState(""); const [extra, setExtra] = useState({ amount: "", note: "" });
-const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
-const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
-const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
-return (
-<div className="space-y-3 pt-3">
-<div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim & Task</p><Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
-{state.users.filter((u) => u.role !== "owner").map((u) => {
-const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
-const extraM = state.extras.filter((x) => x.userId === u.id && inMonth(x.date, month())).reduce((a, x) => a + x.amount, 0);
-return (
-<Card key={u.id} className="p-4">
-<div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
-{extraM > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-2 flex items-center gap-1"><Gift size={12} />Extra cash bulan ini: {rp(extraM)}</p>}
-<div className="space-y-1 mb-2">{tasks.map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted">{t.done ? <CheckCircle2 size={13} className="text-emerald-500" /> : <Circle size={13} />}<span className={t.done ? "line-through" : ""}>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
-<div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>
-</Card>
-);
-})}
-<Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
-<Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
-<Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Kasih extra cash (bonus)"><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">Beri bonus</Btn></Modal>
-</div>
-);
+  const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null);
+  const [f, setF] = useState({ name: "", position: "Mekanik" }); const [taskTitle, setTaskTitle] = useState(""); const [extra, setExtra] = useState({ amount: "", note: "" });
+  const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
+  const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
+  const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
+  return (
+    <div className="space-y-3 pt-3">
+      <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim & Task</p><Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
+      {state.users.filter((u) => u.role !== "owner").map((u) => {
+        const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
+        const extraM = state.extras.filter((x) => x.userId === u.id && inMonth(x.date, month())).reduce((a, x) => a + x.amount, 0);
+        return (
+          <Card key={u.id} className="p-4">
+            <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
+            {extraM > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-2 flex items-center gap-1"><Gift size={12} />Extra cash bulan ini: {rp(extraM)}</p>}
+            <div className="space-y-1 mb-2">{tasks.map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted">{t.done ? <CheckCircle2 size={13} className="text-emerald-500" /> : <Circle size={13} />}<span className={t.done ? "line-through" : ""}>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
+            <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>
+          </Card>
+        );
+      })}
+      <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
+      <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
+      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Kasih extra cash (bonus)"><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">Beri bonus</Btn></Modal>
+    </div>
+  );
 }
 
 /* ============ Laporan Bulanan (owner) ============ */
 function monthlyReport(state, ym) {
-const expFor = (id) => state.expenses.filter((e) => e.unitId === id).reduce((a, e) => a + e.amount, 0);
-const sold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, ym));
-const revenue = sold.reduce((a, u) => a + (u.sellPrice || 0), 0);
-const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expFor(u.id)), 0);
-const byName = {};
-sold.forEach((u) => { byName[u.name] = byName[u.name] || { count: 0, profit: 0, revenue: 0 }; byName[u.name].count++; byName[u.name].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].revenue += (u.sellPrice || 0); });
-const groups = Object.entries(byName).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
-const liveDays = new Set(state.lives.filter((l) => inMonth(l.date, ym)).map((l) => l.date));
-const staff = state.users.filter((u) => u.role !== "owner");
-const perEmp = staff.map((u) => {
-const days = state.attendance.filter((a) => a.userId === u.id && inMonth(a.date, ym));
-return { user: u, hadir: days.length, bolosLive: days.filter((a) => !liveDays.has(a.date)).length, extra: state.extras.filter((x) => x.userId === u.id && inMonth(x.date, ym)).reduce((a, x) => a + x.amount, 0) };
-});
-return { sold, total: sold.length, revenue, profit, groups, perEmp };
+  const expFor = (id) => state.expenses.filter((e) => e.unitId === id).reduce((a, e) => a + e.amount, 0);
+  const sold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, ym));
+  const revenue = sold.reduce((a, u) => a + (u.sellPrice || 0), 0);
+  const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expFor(u.id)), 0);
+  const byName = {};
+  sold.forEach((u) => { byName[u.name] = byName[u.name] || { count: 0, profit: 0, revenue: 0 }; byName[u.name].count++; byName[u.name].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].revenue += (u.sellPrice || 0); });
+  const groups = Object.entries(byName).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
+  const liveDays = new Set(state.lives.filter((l) => inMonth(l.date, ym)).map((l) => l.date));
+  const staff = state.users.filter((u) => u.role !== "owner");
+  const perEmp = staff.map((u) => {
+    const days = state.attendance.filter((a) => a.userId === u.id && inMonth(a.date, ym));
+    return { user: u, hadir: days.length, bolosLive: days.filter((a) => !liveDays.has(a.date)).length, extra: state.extras.filter((x) => x.userId === u.id && inMonth(x.date, ym)).reduce((a, x) => a + x.amount, 0) };
+  });
+  return { sold, total: sold.length, revenue, profit, groups, perEmp };
 }
 function LaporanTab({ state }) {
-const [ym, setYm] = useState(month());
-const r = monthlyReport(state, ym);
-const top = r.groups[0];
-const donut = r.groups.map((g) => ({ name: g.name, value: g.count }));
-const isCurrent = ym >= month();
-return (
-<div className="space-y-3 pt-3 pb-4">
-<div className="flex items-center justify-between pt-1">
-<p className="font-bold text-lg">Laporan Bulanan</p>
-<div className="flex items-center gap-1 s-soft rounded-xl p-1">
-<button onClick={() => setYm(shiftMonth(ym, -1))} className="p-1.5 rounded-lg s-surface"><ChevronLeft size={16} /></button>
-<span className="text-xs font-bold px-1 min-w-[88px] text-center">{monthLabel(ym)}</span>
-<button disabled={isCurrent} onClick={() => setYm(shiftMonth(ym, 1))} className={`p-1.5 rounded-lg s-surface ${isCurrent ? "opacity-30" : ""}`}><ChevronRight size={16} /></button>
-</div>
-</div>
+  const [ym, setYm] = useState(month());
+  const r = monthlyReport(state, ym);
+  const top = r.groups[0];
+  const donut = r.groups.map((g) => ({ name: g.name, value: g.count }));
+  const isCurrent = ym >= month();
+  return (
+    <div className="space-y-3 pt-3 pb-4">
+      <div className="flex items-center justify-between pt-1">
+        <p className="font-bold text-lg">Laporan Bulanan</p>
+        <div className="flex items-center gap-1 s-soft rounded-xl p-1">
+          <button onClick={() => setYm(shiftMonth(ym, -1))} className="p-1.5 rounded-lg s-surface"><ChevronLeft size={16} /></button>
+          <span className="text-xs font-bold px-1 min-w-[88px] text-center">{monthLabel(ym)}</span>
+          <button disabled={isCurrent} onClick={() => setYm(shiftMonth(ym, 1))} className={`p-1.5 rounded-lg s-surface ${isCurrent ? "opacity-30" : ""}`}><ChevronRight size={16} /></button>
+        </div>
+      </div>
 
-<Card className="p-4">
-<p className="font-bold text-sm mb-1 flex items-center gap-1.5"><PieIcon size={15} className="text-orange-500" />Motor terjual bulan ini</p>
-{r.total === 0 ? (
-<p className="text-sm s-muted py-6 text-center">Belum ada unit terjual di bulan ini.</p>
-) : (
-<>
-<div className="relative" style={{ height: 200 }}>
-<ResponsiveContainer width="100%" height="100%">
-<PieChart><Pie data={donut} dataKey="value" nameKey="name" innerRadius={58} outerRadius={82} paddingAngle={donut.length > 1 ? 3 : 0} stroke="none">{donut.map((d, i) => <Cell key={i} fill={PAL[i % PAL.length]} />)}</Pie></PieChart>
-</ResponsiveContainer>
-<div className="absolute inset-0 grid place-items-center pointer-events-none"><div className="text-center"><p className="text-3xl font-extrabold leading-none">{r.total}</p><p className="text-[11px] s-muted">unit terjual</p></div></div>
-</div>
-<div className="space-y-1.5 mt-2">{r.groups.map((g, i) => <div key={g.name} className="flex items-center justify-between text-sm"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ background: PAL[i % PAL.length] }} /><span className="font-medium">{g.name}</span></div><span className="s-muted text-xs">{g.count} unit · {Math.round(g.count / r.total * 100)}%</span></div>)}</div>
-</>
-)}
-</Card>
+      <Card className="p-4">
+        <p className="font-bold text-sm mb-1 flex items-center gap-1.5"><PieIcon size={15} className="text-orange-500" />Motor terjual bulan ini</p>
+        {r.total === 0 ? (
+          <p className="text-sm s-muted py-6 text-center">Belum ada unit terjual di bulan ini.</p>
+        ) : (
+          <>
+            <div className="relative" style={{ height: 200 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart><Pie data={donut} dataKey="value" nameKey="name" innerRadius={58} outerRadius={82} paddingAngle={donut.length > 1 ? 3 : 0} stroke="none">{donut.map((d, i) => <Cell key={i} fill={PAL[i % PAL.length]} />)}</Pie></PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 grid place-items-center pointer-events-none"><div className="text-center"><p className="text-3xl font-extrabold leading-none">{r.total}</p><p className="text-[11px] s-muted">unit terjual</p></div></div>
+            </div>
+            <div className="space-y-1.5 mt-2">{r.groups.map((g, i) => <div key={g.name} className="flex items-center justify-between text-sm"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ background: PAL[i % PAL.length] }} /><span className="font-medium">{g.name}</span></div><span className="s-muted text-xs">{g.count} unit · {Math.round(g.count / r.total * 100)}%</span></div>)}</div>
+          </>
+        )}
+      </Card>
 
-{top && (
-<Card className="p-4">
-<p className="text-xs s-muted mb-1">🏆 Motor terlaris bulan ini</p>
-<p className="font-extrabold text-lg">{top.name}</p>
-<p className="text-sm s-muted mb-3">{top.count} unit terjual ({Math.round(top.count / r.total * 100)}%)</p>
-<div className="grid grid-cols-2 gap-2"><Read label="Penjualan" value={rp(top.revenue)} /><Read label="Keuntungan" value={rp(top.profit)} accent="#10b981" /></div>
-</Card>
-)}
+      {top && (
+        <Card className="p-4">
+          <p className="text-xs s-muted mb-1">🏆 Motor terlaris bulan ini</p>
+          <p className="font-extrabold text-lg">{top.name}</p>
+          <p className="text-sm s-muted mb-3">{top.count} unit terjual ({Math.round(top.count / r.total * 100)}%)</p>
+          <div className="grid grid-cols-2 gap-2"><Read label="Penjualan" value={rp(top.revenue)} /><Read label="Keuntungan" value={rp(top.profit)} accent="#10b981" /></div>
+        </Card>
+      )}
 
-<Card className="p-4">
-<p className="font-bold text-sm mb-3">Pemasukan</p>
-<div className="grid grid-cols-2 gap-2"><Read label="Total penjualan" value={rp(r.revenue)} /><Read label="Total keuntungan" value={rp(r.profit)} accent="#10b981" /></div>
-</Card>
+      <Card className="p-4">
+        <p className="font-bold text-sm mb-3">Pemasukan</p>
+        <div className="grid grid-cols-2 gap-2"><Read label="Total penjualan" value={rp(r.revenue)} /><Read label="Total keuntungan" value={rp(r.profit)} accent="#10b981" /></div>
+      </Card>
 
-<Card className="p-4">
-<p className="font-bold text-sm mb-3">Rekap pegawai</p>
-<div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 gap-y-2 text-xs">
-<span className="s-muted font-semibold">Pegawai</span><span className="s-muted font-semibold text-center">Hadir</span><span className="s-muted font-semibold text-center">Bolos live</span><span className="s-muted font-semibold text-right">Extra</span>
-{r.perEmp.map(({ user, hadir, bolosLive, extra }) => (
-<React.Fragment key={user.id}>
-<div className="flex items-center gap-1.5"><Avatar user={user} size={22} /><span className="font-medium truncate">{user.name}</span></div>
-<span className="text-center font-bold">{hadir}</span>
-<span className={`text-center font-bold ${bolosLive > 0 ? "text-rose-500" : ""}`}>{bolosLive}</span>
-<span className="text-right font-bold text-orange-500">{extra ? rp(extra) : "-"}</span>
-</React.Fragment>
-))}
-</div>
-<p className="text-[10px] s-muted mt-3">Bolos live = hari dia hadir tapi tim nggak live TikTok. Laporan update otomatis tiap bulan, bisa cek bulan sebelumnya pakai panah di atas.</p>
-</Card>
-</div>
-);
+      <Card className="p-4">
+        <p className="font-bold text-sm mb-3">Rekap pegawai</p>
+        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 gap-y-2 text-xs">
+          <span className="s-muted font-semibold">Pegawai</span><span className="s-muted font-semibold text-center">Hadir</span><span className="s-muted font-semibold text-center">Bolos live</span><span className="s-muted font-semibold text-right">Extra</span>
+          {r.perEmp.map(({ user, hadir, bolosLive, extra }) => (
+            <React.Fragment key={user.id}>
+              <div className="flex items-center gap-1.5"><Avatar user={user} size={22} /><span className="font-medium truncate">{user.name}</span></div>
+              <span className="text-center font-bold">{hadir}</span>
+              <span className={`text-center font-bold ${bolosLive > 0 ? "text-rose-500" : ""}`}>{bolosLive}</span>
+              <span className="text-right font-bold text-orange-500">{extra ? rp(extra) : "-"}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <p className="text-[10px] s-muted mt-3">Bolos live = hari dia hadir tapi tim nggak live TikTok. Laporan update otomatis tiap bulan, bisa cek bulan sebelumnya pakai panah di atas.</p>
+      </Card>
+    </div>
+  );
 }
 
 /* ============ Group Chat ============ */
 function ChatPage({ open, onClose, state, me, update }) {
-const [text, setText] = useState("");
-const [photo, setPhoto] = useState("");
-const [zoom, setZoom] = useState("");
-const fileRef = useRef(null);
-const endRef = useRef(null);
-const msgs = state.chat || [];
-useEffect(() => { if (open) setTimeout(() => endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }), 60); }, [open, msgs.length]);
-if (!open) return null;
-const user = (id) => state.users.find((u) => u.id === id);
-const send = () => {
-if (!text.trim() && !photo) return;
-update((s) => { s.chat = s.chat || []; s.chat.push({ id: uid(), by: me.id, text: text.trim(), photo, ts: Date.now() }); if (s.chat.length > 200) s.chat = s.chat.slice(-200); return s; });
-setText(""); setPhoto("");
-};
-const pickPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; setPhoto(await compress(f, 720, 0.5)); };
-return (
-<div className="fixed inset-0 z-[55] s-bg flex flex-col max-w-md mx-auto an-up">
-<div style={{ background: "var(--header)" }} className="text-white px-4 py-3 flex items-center gap-3">
-<button onClick={onClose}><ArrowLeft size={20} /></button>
-<div className="w-9 h-9 rounded-xl bg-orange-500 grid place-items-center"><Users size={18} /></div>
-<div><p className="font-bold leading-tight">Grup Motorell</p><p className="text-[11px] text-slate-400">{state.users.length} anggota</p></div>
-</div>
-<div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
-{msgs.length === 0 && <p className="text-center text-sm s-muted mt-12">Belum ada pesan. Sapa tim kamu! 👋</p>}
-{msgs.map((m) => {
-const mine = m.by === me.id; const u = user(m.by);
-return (
-<div key={m.id} className={`flex gap-2 ${mine ? "flex-row-reverse" : ""}`}>
-{!mine && <Avatar user={u} size={28} />}
-<div className="max-w-[76%] flex flex-col" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
-{!mine && <span className="text-[10px] s-muted ml-1 mb-0.5">{u ? u.name : "?"}</span>}
-<div className={`rounded-2xl px-3 py-2 ${mine ? "bg-orange-500 text-white rounded-br-md" : "s-surface s-text s-border border rounded-bl-md"}`}>
-{m.photo && <img src={m.photo} onClick={() => setZoom(m.photo)} className="rounded-xl mb-1 max-h-52 object-cover" alt="" />}
-{m.text && <p className="text-sm whitespace-pre-wrap break-words">{m.text}</p>}
-</div>
-<span className="text-[9px] s-muted mx-1 mt-0.5">{new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
-</div>
-</div>
-);
-})}
-<div ref={endRef} />
-</div>
-<div className="s-surface s-border border-t p-2">
-{photo && <div className="relative inline-block mb-2"><img src={photo} className="h-20 rounded-xl" alt="" /><button onClick={() => setPhoto("")} className="absolute -top-1.5 -right-1.5 bg-black/70 text-white rounded-full p-1"><X size={12} /></button></div>}
-<div className="flex items-center gap-2">
-<input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
-<button onClick={() => fileRef.current && fileRef.current.click()} className="p-2.5 s-soft rounded-full active:scale-90 transition"><Camera size={18} /></button>
-<input className={inputCls + " flex-1"} placeholder="Tulis pesan…" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
-<button onClick={send} className="p-2.5 bg-orange-500 text-white rounded-full active:scale-90 transition"><Send size={18} /></button>
-</div>
-</div>
-<Lightbox src={zoom} onClose={() => setZoom("")} />
-</div>
-);
+  const [text, setText] = useState("");
+  const [photo, setPhoto] = useState("");
+  const [zoom, setZoom] = useState("");
+  const fileRef = useRef(null);
+  const endRef = useRef(null);
+  const msgs = state.chat || [];
+  useEffect(() => { if (open) setTimeout(() => endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }), 60); }, [open, msgs.length]);
+  if (!open) return null;
+  const user = (id) => state.users.find((u) => u.id === id);
+  const send = () => {
+    if (!text.trim() && !photo) return;
+    update((s) => { s.chat = s.chat || []; s.chat.push({ id: uid(), by: me.id, text: text.trim(), photo, ts: Date.now() }); if (s.chat.length > 200) s.chat = s.chat.slice(-200); return s; });
+    setText(""); setPhoto("");
+  };
+  const pickPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; setPhoto(await compress(f, 720, 0.5)); };
+  return (
+    <div className="fixed inset-0 z-[55] s-bg flex flex-col max-w-md mx-auto an-up">
+      <div style={{ background: "var(--header)" }} className="text-white px-4 py-3 flex items-center gap-3">
+        <button onClick={onClose}><ArrowLeft size={20} /></button>
+        <div className="w-9 h-9 rounded-xl bg-orange-500 grid place-items-center"><Users size={18} /></div>
+        <div><p className="font-bold leading-tight">Grup Motorell</p><p className="text-[11px] text-slate-400">{state.users.length} anggota</p></div>
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
+        {msgs.length === 0 && <p className="text-center text-sm s-muted mt-12">Belum ada pesan. Sapa tim kamu! 👋</p>}
+        {msgs.map((m) => {
+          const mine = m.by === me.id; const u = user(m.by);
+          return (
+            <div key={m.id} className={`flex gap-2 ${mine ? "flex-row-reverse" : ""}`}>
+              {!mine && <Avatar user={u} size={28} />}
+              <div className="max-w-[76%] flex flex-col" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
+                {!mine && <span className="text-[10px] s-muted ml-1 mb-0.5">{u ? u.name : "?"}</span>}
+                <div className={`rounded-2xl px-3 py-2 ${mine ? "bg-orange-500 text-white rounded-br-md" : "s-surface s-text s-border border rounded-bl-md"}`}>
+                  {m.photo && <img src={m.photo} onClick={() => setZoom(m.photo)} className="rounded-xl mb-1 max-h-52 object-cover" alt="" />}
+                  {m.text && <p className="text-sm whitespace-pre-wrap break-words">{m.text}</p>}
+                </div>
+                <span className="text-[9px] s-muted mx-1 mt-0.5">{new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={endRef} />
+      </div>
+      <div className="s-surface s-border border-t p-2">
+        {photo && <div className="relative inline-block mb-2"><img src={photo} className="h-20 rounded-xl" alt="" /><button onClick={() => setPhoto("")} className="absolute -top-1.5 -right-1.5 bg-black/70 text-white rounded-full p-1"><X size={12} /></button></div>}
+        <div className="flex items-center gap-2">
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
+          <button onClick={() => fileRef.current && fileRef.current.click()} className="p-2.5 s-soft rounded-full active:scale-90 transition"><Camera size={18} /></button>
+          <input className={inputCls + " flex-1"} placeholder="Tulis pesan…" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
+          <button onClick={send} className="p-2.5 bg-orange-500 text-white rounded-full active:scale-90 transition"><Send size={18} /></button>
+        </div>
+      </div>
+      <Lightbox src={zoom} onClose={() => setZoom("")} />
+    </div>
+  );
 }
