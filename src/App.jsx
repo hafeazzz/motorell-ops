@@ -247,7 +247,7 @@ export default function MotorellOps() {
   };
 
   return (
-    <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-2xl lg:max-w-5xl mx-auto relative`}>
+    <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
 .mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
 .mr-app.dark{--bg:#0a0f1a;--surface:#121a2b;--soft:#1b2540;--border:#26324d;--text:#e7edf7;--muted:#94a6c4;--header:#070b14}
@@ -266,7 +266,7 @@ button{transition:transform .12s ease}
       <Fade delay={0}>
         <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v7</span></div>
+            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v9</span></div>
             <div className="flex items-center gap-2">
               <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -288,7 +288,7 @@ button{transition:transform .12s ease}
         </div>
       </main>
 
-      <nav style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-2xl lg:max-w-5xl s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
+      <nav style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-xl s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
         {tabs.map((t) => {
           const Ic = t.icon; const on = tab === t.id;
           return (
@@ -456,7 +456,7 @@ function HomeTab({ state, me, isOwner, go }) {
 
       <Fade delay={120}>
         {isOwner ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Stat label="Total Unit" value={state.units.length} sub={`${proses} proses`} icon={Bike} color="#f97316" />
             <Stat label="Hadir Hari Ini" value={todayAbsen.length} sub={`dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
             <Stat label="Total Pengeluaran" value={rp(totalExp)} small icon={Wallet} color="#a855f7" />
@@ -497,7 +497,7 @@ function HomeTab({ state, me, isOwner, go }) {
       <Fade delay={280}>
         <Card className="p-4">
           <p className="font-bold text-sm mb-3">Akses cepat</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             <Quick label="Absen masuk" icon={Clock} onClick={() => go("absen")} />
             <Quick label="Catat pengeluaran" icon={Wallet} onClick={() => go("uang")} />
             <Quick label="Upload konten" icon={Video} onClick={() => go("media")} />
@@ -592,7 +592,7 @@ function UangTab({ state, me, update }) {
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
       {state.units.length === 0 && <Card className="p-8 text-center"><Bike size={28} className="mx-auto text-orange-500 mb-2" /><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
-      <div className="grid gap-3 lg:grid-cols-2">{state.units.map((u) => {
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{state.units.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
         return (
           <Card key={u.id} className="p-4">
@@ -704,7 +704,7 @@ function MediaTab({ state, me, isOwner, update }) {
       {!isOwner && <Card className="p-4"><p className="font-bold mb-3">Upload konten</p><input className={`${inputCls} mb-2`} placeholder="Link konten (TikTok/IG/YouTube)…" value={link} onChange={(e) => setLink(e.target.value)} /><input className={`${inputCls} mb-2`} placeholder="Judul / keterangan konten" value={note} onChange={(e) => setNote(e.target.value)} /><p className="text-xs font-semibold s-muted mb-1.5">Kategori konten</p><CatChips value={cat} onChange={setCat} /><Btn onClick={submit} className="w-full mt-3"><LinkIcon size={15} className="inline mr-1.5 -mt-0.5" />Kirim untuk verifikasi</Btn></Card>}
       <p className="font-bold text-lg">{isOwner ? "Verifikasi konten" : "Konten kamu"}</p>
       {list.length === 0 && <p className="text-sm s-muted">Belum ada konten.</p>}
-      {list.map((m) => { const canEdit = isOwner || m.by === me.id; return (
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{list.map((m) => { const canEdit = isOwner || m.by === me.id; return (
         <Card key={m.id} className="p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1"><div className="flex items-center gap-2 mb-1"><Tag color={MCAT_COLOR[m.category] || "slate"}>{m.category}</Tag>{m.verified ? <Tag color="emerald">Terverifikasi</Tag> : <Tag color="amber">Pending</Tag>}</div><p className="font-semibold text-sm">{m.note || "Tanpa judul"}</p><p className="text-[11px] s-muted mb-1">oleh {userName(m.by)} · {m.date}</p><a href={m.link} target="_blank" rel="noreferrer" className="text-xs text-blue-500 break-all flex items-center gap-1"><LinkIcon size={12} />{m.link}</a></div>
@@ -712,7 +712,7 @@ function MediaTab({ state, me, isOwner, update }) {
           </div>
           {isOwner && !m.verified && <Btn variant="dark" onClick={() => verify(m.id)} className="w-full mt-3"><BadgeCheck size={15} className="inline mr-1.5 -mt-0.5" />Verifikasi</Btn>}
         </Card>
-      ); })}
+      ); })}</div>
       <MediaEditModal item={edit} onClose={() => setEdit(null)} update={update} />
     </div>
   );
@@ -730,16 +730,56 @@ function MediaEditModal({ item, onClose, update }) {
 /* ============ Task ============ */
 function TaskTab({ state, me, update }) {
   const [title, setTitle] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editVal, setEditVal] = useState("");
   const mine = state.tasks.filter((t) => t.userId === me.id);
-  const toggle = (id) => update((s) => { const t = s.tasks.find((x) => x.id === id); t.done = !t.done; return s; });
-  const add = () => { if (!title) return; update((s) => { s.tasks.push({ id: uid(), userId: me.id, title, done: false, setBy: "self", date: today() }); return s; }); setTitle(""); };
+  const active = mine.filter((t) => !t.done);
+  const history = mine.filter((t) => t.done);
+  const toggle = (id) => update((s) => { const t = s.tasks.find((x) => x.id === id); if (t) t.done = !t.done; return s; });
+  const add = () => { if (!title.trim()) return; update((s) => { s.tasks.push({ id: uid(), userId: me.id, title: title.trim(), done: false, setBy: "self", date: today() }); return s; }); setTitle(""); };
   const del = (id) => update((s) => { s.tasks = s.tasks.filter((t) => t.id !== id); return s; });
+  const startEdit = (t) => { setEditId(t.id); setEditVal(t.title); };
+  const saveEdit = () => { if (editVal.trim()) update((s) => { const t = s.tasks.find((x) => x.id === editId); if (t) t.title = editVal.trim(); return s; }); setEditId(null); };
   return (
     <div className="space-y-3 pt-3">
       <p className="font-bold text-lg">Task harian kamu</p>
       <Card className="p-3 flex gap-2"><input className={inputCls} placeholder="Tambah task sendiri…" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} /><Btn onClick={add} className="!px-3"><Plus size={16} /></Btn></Card>
-      <Card className="p-2">{mine.length === 0 && <p className="text-sm s-muted p-3">Belum ada task.</p>}{mine.map((t) => <div key={t.id} className="flex items-center gap-3 px-2 py-2.5 border-b s-border last:border-0"><button onClick={() => toggle(t.id)}>{t.done ? <CheckCircle2 size={22} className="text-emerald-500" /> : <Circle size={22} className="s-muted" />}</button><span className={`flex-1 text-sm ${t.done ? "line-through s-muted" : ""}`}>{t.title}</span>{t.setBy === "owner" ? <Tag color="blue">dari Owner</Tag> : <button onClick={() => del(t.id)} className="s-muted"><Trash2 size={15} /></button>}</div>)}</Card>
-      <p className="text-[11px] s-muted px-1">Task dari Owner nggak bisa dihapus — cuma bisa kamu centang kalau udah kelar.</p>
+      <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+        <div>
+          <p className="text-xs font-bold s-muted mb-1.5 px-1">Aktif ({active.length})</p>
+          <Card className="p-2">
+            {active.length === 0 && <p className="text-sm s-muted p-3">Belum ada task aktif. 🎉</p>}
+            {active.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 px-2 py-2.5 border-b s-border last:border-0">
+                <button onClick={() => toggle(t.id)}><Circle size={22} className="s-muted" /></button>
+                {editId === t.id ? (
+                  <input autoFocus className={inputCls + " flex-1 !py-1.5"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveEdit()} onBlur={saveEdit} />
+                ) : (
+                  <span className="flex-1 text-sm">{t.title}{t.setBy === "owner" && <span className="ml-1.5"><Tag color="blue">Owner</Tag></span>}</span>
+                )}
+                {editId !== t.id && t.setBy !== "owner" && (
+                  <div className="flex items-center gap-2 shrink-0"><button onClick={() => startEdit(t)} className="s-muted"><Pencil size={14} /></button><button onClick={() => del(t.id)} className="s-muted"><Trash2 size={15} /></button></div>
+                )}
+              </div>
+            ))}
+          </Card>
+        </div>
+        <div>
+          <p className="text-xs font-bold s-muted mb-1.5 px-1">Riwayat selesai ({history.length})</p>
+          <Card className="p-2">
+            {history.length === 0 && <p className="text-sm s-muted p-3">Belum ada yang selesai.</p>}
+            {history.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 px-2 py-2 border-b s-border last:border-0">
+                <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                <span className="flex-1 text-sm line-through s-muted">{t.title}</span>
+                <button onClick={() => toggle(t.id)} className="text-xs text-orange-500 font-bold shrink-0">Pulihkan</button>
+                <button onClick={() => del(t.id)} className="s-muted shrink-0"><Trash2 size={14} /></button>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+      <p className="text-[11px] s-muted px-1">Task yang dicentang otomatis pindah ke <b className="s-text">Riwayat</b> (bisa dipulihkan kapan aja). Task dari Owner cuma bisa dicentang.</p>
     </div>
   );
 }
@@ -759,14 +799,14 @@ function TimTab({ state, update }) {
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim & Task</p><Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
-      <div className="grid gap-3 lg:grid-cols-2">{state.users.filter((u) => u.role !== "owner").map((u) => {
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{state.users.filter((u) => u.role !== "owner").map((u) => {
         const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
         const extraM = state.extras.filter((x) => x.userId === u.id && inMonth(x.date, month())).reduce((a, x) => a + x.amount, 0);
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
             {extraM > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-2 flex items-center gap-1"><Gift size={12} />Extra cash bulan ini: {rp(extraM)}</p>}
-            <div className="space-y-1 mb-2">{tasks.map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted">{t.done ? <CheckCircle2 size={13} className="text-emerald-500" /> : <Circle size={13} />}<span className={t.done ? "line-through" : ""}>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
+            <div className="space-y-1 mb-2">{tasks.filter((t) => !t.done).length === 0 && <p className="text-[11px] s-muted">Tidak ada task aktif.</p>}{tasks.filter((t) => !t.done).map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted"><Circle size={13} /><span>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
             <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>
             <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border"><button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button><button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button><button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button></div>
           </Card>
@@ -869,16 +909,32 @@ function ChatPage({ open, onClose, state, me, update }) {
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState("");
   const [zoom, setZoom] = useState("");
+  const [msgs, setMsgs] = useState([]);
   const fileRef = useRef(null);
   const endRef = useRef(null);
-  const msgs = state.chat || [];
+  const load = async () => { try { const m = await window.storage.chatList(); setMsgs(m); } catch (e) {} };
+  useEffect(() => {
+    if (!open) return;
+    load();
+    const unsub = window.storage.chatSubscribe ? window.storage.chatSubscribe(() => load()) : null;
+    return () => { if (unsub) unsub(); };
+  }, [open]);
   useEffect(() => { if (open) setTimeout(() => endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }), 60); }, [open, msgs.length]);
   if (!open) return null;
   const user = (id) => state.users.find((u) => u.id === id);
-  const send = () => {
+  const send = async () => {
     if (!text.trim() && !photo) return;
-    update((s) => { s.chat = s.chat || []; s.chat.push({ id: uid(), by: me.id, text: text.trim(), photo, ts: Date.now() }); if (s.chat.length > 200) s.chat = s.chat.slice(-200); return s; });
+    const m = { id: uid(), ts: Date.now(), by: me.id, msg: text.trim(), photo: photo || "" };
     setText(""); setPhoto("");
+    setMsgs((prev) => [...prev, m]);
+    await window.storage.chatSend(m);
+    load();
+  };
+  const del = async (id) => {
+    if (!window.confirm("Hapus pesan ini?")) return;
+    setMsgs((prev) => prev.filter((x) => x.id !== id));
+    await window.storage.chatDelete(id);
+    load();
   };
   const pickPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; setPhoto(await compress(f, 720, 0.5)); };
   return (
@@ -899,9 +955,9 @@ function ChatPage({ open, onClose, state, me, update }) {
                 {!mine && <span className="text-[10px] s-muted ml-1 mb-0.5">{u ? u.name : "?"}</span>}
                 <div className={`rounded-2xl px-3 py-2 ${mine ? "bg-orange-500 text-white rounded-br-md" : "s-surface s-text s-border border rounded-bl-md"}`}>
                   {m.photo && <img src={m.photo} onClick={() => setZoom(m.photo)} className="rounded-xl mb-1 max-h-52 object-cover" alt="" />}
-                  {m.text && <p className="text-sm whitespace-pre-wrap break-words">{m.text}</p>}
+                  {m.msg && <p className="text-sm whitespace-pre-wrap break-words">{m.msg}</p>}
                 </div>
-                <span className="text-[9px] s-muted mx-1 mt-0.5">{new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+                <span className="text-[9px] s-muted mx-1 mt-0.5 flex items-center gap-1.5">{new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}{(mine || me.role === "owner") && <button onClick={() => del(m.id)} className="text-rose-400/80"><Trash2 size={11} /></button>}</span>
               </div>
             </div>
           );

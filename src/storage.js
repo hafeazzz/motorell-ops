@@ -128,6 +128,31 @@ const storage = {
   },
 };
 
+/* ===== CHAT: tabel terpisah (append-only) supaya kirim barengan tidak saling timpa ===== */
+const CHAT_TABLE = "chat";
+storage.chatList = async () => {
+  try {
+    const { data, error } = await supabase.from(CHAT_TABLE).select("*").order("ts", { ascending: true }).limit(300);
+    if (error) throw error;
+    return data || [];
+  } catch (e) { console.error("chatList error:", e); return []; }
+};
+storage.chatSend = async (m) => {
+  try { const { error } = await supabase.from(CHAT_TABLE).insert(m); if (error) throw error; return true; }
+  catch (e) { console.error("chatSend error:", e); return false; }
+};
+storage.chatDelete = async (id) => {
+  try { const { error } = await supabase.from(CHAT_TABLE).delete().eq("id", id); if (error) throw error; return true; }
+  catch (e) { console.error("chatDelete error:", e); return false; }
+};
+storage.chatSubscribe = (cb) => {
+  const channel = supabase
+    .channel("chat-stream")
+    .on("postgres_changes", { event: "*", schema: "public", table: CHAT_TABLE }, () => cb())
+    .subscribe();
+  return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+};
+
 if (typeof window !== "undefined") {
   window.storage = storage;
 }
