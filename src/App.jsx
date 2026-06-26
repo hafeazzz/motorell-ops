@@ -149,6 +149,24 @@ function prunePhotos(state) {
   return { next, changed };
 }
 
+// Pastikan SETIAP unit terjual sudah memberi bonus ke tiap user ber-saleBonus (sekali per unit per user).
+// Ini menambal unit yang ditandai "terjual" sebelum fitur/toggle aktif, dan tetap idempoten.
+function reconcileSaleBonus(s) {
+  let changed = false;
+  const bonusUsers = (s.users || []).filter((u) => u.saleBonus);
+  if (!bonusUsers.length) return false;
+  (s.units || []).filter((u) => u.status === "terjual").forEach((unit) => {
+    bonusUsers.forEach((user) => {
+      const has = (s.extras || []).some((e) => e.auto && e.unitId === unit.id && e.userId === user.id);
+      if (!has) {
+        s.extras.push({ id: uid(), userId: user.id, amount: SALE_BONUS, note: `Bonus unit terjual: ${unit.name}`, by: "u_own", date: unit.soldAt || today(), unitId: unit.id, auto: true });
+        changed = true;
+      }
+    });
+  });
+  return changed;
+}
+
 /* ============ UI bits ============ */
 const Card = ({ children, className = "" }) => <div className={`s-surface s-border border rounded-2xl ${className}`}>{children}</div>;
 const Fade = ({ delay = 0, children }) => <div className="mr-fade" style={{ animationDelay: `${delay}ms` }}>{children}</div>;
@@ -216,7 +234,7 @@ export default function MotorellOps() {
   const [chatOpen, setChatOpen] = useState(false);
   const touch = useRef({ x: 0, y: 0 });
 
-  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); if (changed) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
+  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = reconcileSaleBonus(next); if (changed || c2) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
     if (!window.storage || !window.storage.subscribe) return;
     const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then(setState); });
@@ -235,7 +253,7 @@ export default function MotorellOps() {
     { id: "uang", label: "Keuangan", icon: Wallet },
     { id: "media", label: "Media", icon: Video },
     ...(isOwner
-      ? [{ id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
+      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
       : [{ id: "task", label: "Task", icon: CheckSquare }]),
   ];
   const order = tabs.map((t) => t.id);
@@ -266,7 +284,7 @@ button{transition:transform .12s ease}
       <Fade delay={0}>
         <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v9</span></div>
+            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v10</span></div>
             <div className="flex items-center gap-2">
               <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -282,7 +300,7 @@ button{transition:transform .12s ease}
           {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} update={update} />}
           {tab === "uang" && <UangTab state={state} me={me} update={update} />}
           {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} update={update} />}
-          {tab === "task" && <TaskTab state={state} me={me} update={update} />}
+          {tab === "task" && (isOwner ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
           {tab === "tim" && <TimTab state={state} update={update} />}
           {tab === "laporan" && <LaporanTab state={state} />}
         </div>
@@ -784,6 +802,70 @@ function TaskTab({ state, me, update }) {
   );
 }
 
+/* ============ Task (Owner) ============ */
+function OwnerTaskTab({ state, update }) {
+  const [openAdd, setOpenAdd] = useState(false);
+  const [editTask, setEditTask] = useState(null);
+  const staff = state.users.filter((u) => u.role !== "owner");
+  const toggle = (id) => update((s) => { const t = s.tasks.find((x) => x.id === id); if (t) t.done = !t.done; return s; });
+  const del = (id) => update((s) => { s.tasks = s.tasks.filter((t) => t.id !== id); return s; });
+  return (
+    <div className="space-y-3 pt-3">
+      <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Kelola Task</p><Btn onClick={() => setOpenAdd(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
+      {staff.length === 0 && <Card className="p-8 text-center"><CheckSquare size={28} className="mx-auto text-orange-500 mb-2" /><p className="font-semibold text-sm">Belum ada anggota tim</p><p className="text-xs s-muted mt-1">Tambah anggota dulu di menu Tim.</p></Card>}
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        {staff.map((u) => {
+          const ts = state.tasks.filter((t) => t.userId === u.id);
+          const active = ts.filter((t) => !t.done);
+          return (
+            <Card key={u.id} className="p-4">
+              <div className="flex items-center gap-2 mb-3"><Avatar user={u} size={34} /><div className="flex-1"><p className="font-semibold text-sm">{u.name}</p><p className="text-[11px] s-muted">{active.length} aktif · {ts.length - active.length} selesai</p></div><button onClick={() => setOpenAdd(u.id)} className="s-soft rounded-lg p-1.5"><Plus size={15} className="text-orange-500" /></button></div>
+              {ts.length === 0 && <p className="text-xs s-muted">Belum ada task. Tap + buat nambahin.</p>}
+              <div className="space-y-1.5">
+                {ts.map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 text-sm s-soft rounded-lg px-2.5 py-2">
+                    <button onClick={() => toggle(t.id)}>{t.done ? <CheckCircle2 size={17} className="text-emerald-500" /> : <Circle size={17} className="s-muted" />}</button>
+                    <span className={`flex-1 ${t.done ? "line-through s-muted" : ""}`}>{t.title}</span>
+                    <button onClick={() => setEditTask(t)} className="s-muted"><Pencil size={13} /></button>
+                    <button onClick={() => del(t.id)} className="text-rose-400"><Trash2 size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      <OwnerTaskModal openFor={openAdd} staff={staff} onClose={() => setOpenAdd(false)} update={update} />
+      <OwnerTaskEditModal task={editTask} onClose={() => setEditTask(null)} update={update} />
+    </div>
+  );
+}
+function OwnerTaskModal({ openFor, staff, onClose, update }) {
+  const open = !!openFor;
+  const [userId, setUserId] = useState("");
+  const [title, setTitle] = useState("");
+  useEffect(() => { if (open) { setUserId(typeof openFor === "string" ? openFor : (staff[0] && staff[0].id) || ""); setTitle(""); } }, [openFor]);
+  const save = () => { if (!title.trim() || !userId) return; update((s) => { s.tasks.push({ id: uid(), userId, title: title.trim(), done: false, setBy: "owner", date: today() }); return s; }); setTitle(""); onClose(); };
+  return (
+    <Modal open={open} onClose={onClose} title="Tambah task">
+      <Field label="Untuk siapa"><select className={inputCls} value={userId} onChange={(e) => setUserId(e.target.value)}>{staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+      <Field label="Task"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="Follow up calon buyer…" /></Field>
+      <Btn onClick={save} className="w-full mt-2">Tugaskan</Btn>
+    </Modal>
+  );
+}
+function OwnerTaskEditModal({ task, onClose, update }) {
+  const [title, setTitle] = useState("");
+  useEffect(() => { if (task) setTitle(task.title); }, [task]);
+  const save = () => { if (!title.trim()) return; update((s) => { const t = s.tasks.find((x) => x.id === task.id); if (t) t.title = title.trim(); return s; }); onClose(); };
+  return (
+    <Modal open={!!task} onClose={onClose} title="Edit task">
+      <Field label="Task"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} /></Field>
+      <Btn onClick={save} className="w-full mt-2">Simpan</Btn>
+    </Modal>
+  );
+}
+
 /* ============ Tim ============ */
 function TimTab({ state, update }) {
   const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null);
@@ -793,7 +875,7 @@ function TimTab({ state, update }) {
   const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
   const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false });
   const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus }); setEditU(u); };
-  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; } return s; }); setEditU(null); };
+  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; } reconcileSaleBonus(s); return s; }); setEditU(null); };
   const resetPw = (id, name) => { if (window.confirm(`Reset password ${name}? Dia akan diminta bikin password baru saat login berikutnya.`)) update((s) => { const u = s.users.find((x) => x.id === id); if (u) u.password = ""; return s; }); };
   const delUser = (id, name) => { if (window.confirm(`Hapus anggota "${name}"? Tindakan ini permanen.`)) update((s) => { s.users = s.users.filter((x) => x.id !== id); s.tasks = s.tasks.filter((t) => t.userId !== id); return s; }); };
   return (
