@@ -1190,7 +1190,7 @@ function ChatPage({ open, onClose, state, me, update }) {
                   {m.photo && <img src={m.photo} onClick={() => setZoom(m.photo)} className="rounded-xl mb-1 max-h-52 object-cover" alt="" />}
                   {m.msg && <p className="text-sm whitespace-pre-wrap break-words">{m.msg}</p>}
                 </div>
-                <span className="text-[9px] s-muted mx-1 mt-0.5 flex items-center gap-1.5">{new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}{(mine || me.role === "owner") && <button onClick={() => del(m.id)} className="text-rose-400/80"><Trash2 size={11} /></button>}</span>
+                <span className="text-[9px] s-muted mx-1 mt-0.5 flex items-center gap-2">{new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}{(mine || me.role === "owner" || me.role === "admin") && <button onClick={() => del(m.id)} className="text-rose-400 flex items-center gap-0.5 active:scale-90"><Trash2 size={13} />Hapus</button>}</span>
               </div>
             </div>
           );
