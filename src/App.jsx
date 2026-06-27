@@ -5,7 +5,7 @@ import {
   TrendingDown, Wrench, Fuel, Package, Hand, Receipt, Circle,
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
-  MessageCircle, Send, Volume2, VolumeX, Download
+  MessageCircle, Send, Volume2, VolumeX, Download, Search
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -208,6 +208,49 @@ function Lightbox({ src, onClose }) {
   if (!src) return null;
   return createPortal(<div className="fixed inset-0 z-[60] bg-black/80 grid place-items-center p-5" onClick={onClose}><img src={src} className="max-h-[85vh] max-w-full rounded-2xl" alt="" /></div>, document.body);
 }
+// Efek seru: confetti perayaan saat motor terjual, kucing lari (easter egg), toast sapaan saat absen. Dipicu lewat window event.
+const CONFETTI_COLORS = ["#f97316", "#fbbf24", "#34d399", "#60a5fa", "#f472b6", "#a78bfa"];
+function FunFX() {
+  const [party, setParty] = useState(null);
+  const [run, setRun] = useState(false);
+  const [greet, setGreet] = useState(null);
+  useEffect(() => {
+    const onSale = () => { setParty("TERJUAL! 🎉"); setTimeout(() => setParty(null), 2800); };
+    const onRun = () => { setParty("Meow! 🐾"); setRun(true); setTimeout(() => setRun(false), 1600); setTimeout(() => setParty(null), 2800); };
+    const onGreet = (e) => { setGreet((e.detail && e.detail.msg) || "Semangat ya! 🐱"); setTimeout(() => setGreet(null), 2700); };
+    window.addEventListener("mr-sale", onSale);
+    window.addEventListener("mr-catrun", onRun);
+    window.addEventListener("mr-greet", onGreet);
+    return () => { window.removeEventListener("mr-sale", onSale); window.removeEventListener("mr-catrun", onRun); window.removeEventListener("mr-greet", onGreet); };
+  }, []);
+  return createPortal(
+    <>
+      {party && (
+        <div className="fixed inset-0 z-[80] pointer-events-none flex items-center justify-center overflow-hidden">
+          {Array.from({ length: 50 }).map((_, i) => {
+            const left = Math.random() * 100, delay = Math.random() * 0.4, dur = 1.6 + Math.random() * 1.3, size = 8 + Math.random() * 9;
+            return <div key={i} style={{ position: "absolute", left: `${left}%`, top: 0, width: size, height: size * 1.4, background: CONFETTI_COLORS[i % CONFETTI_COLORS.length], borderRadius: 2, animation: `catConfetti ${dur}s linear ${delay}s forwards` }} />;
+          })}
+          <div style={{ animation: "catPop .5s cubic-bezier(.16,1,.3,1) both" }} className="text-center">
+            <div style={{ fontSize: 96 }}>🐱</div>
+            <div className="mt-2 inline-block bg-orange-500 text-white font-extrabold text-2xl px-6 py-2.5 rounded-full shadow-2xl">{party}</div>
+          </div>
+        </div>
+      )}
+      {run && (
+        <div className="fixed left-0 right-0 z-[80] pointer-events-none" style={{ bottom: "calc(5.8rem + env(safe-area-inset-bottom))" }}>
+          <div style={{ animation: "catRun 1.5s linear forwards", fontSize: 60, willChange: "transform" }}>🐈</div>
+        </div>
+      )}
+      {greet && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-[80] pointer-events-none" style={{ bottom: "calc(6rem + env(safe-area-inset-bottom))", animation: "catToast 2.7s ease both" }}>
+          <div className="bg-slate-900 text-white text-sm font-semibold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2"><span className="text-xl">🐱</span>{greet}</div>
+        </div>
+      )}
+    </>,
+    document.body
+  );
+}
 function PhotoInput({ value, onChange, label = "Ambil / pilih foto", gallery }) {
   const ref = useRef(null);
   const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const d = await compress(f); if (d) onChange(d); };
@@ -233,6 +276,8 @@ export default function MotorellOps() {
   const [profile, setProfile] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const touch = useRef({ x: 0, y: 0 });
+  const logoTaps = useRef(0); const logoTimer = useRef(null);
+  const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
 
   useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = reconcileSaleBonus(next); if (changed || c2) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
@@ -283,12 +328,18 @@ export default function MotorellOps() {
 button{transition:transform .12s ease}
 *{-webkit-tap-highlight-color:transparent}html{scroll-behavior:smooth}
 @media (prefers-reduced-motion:reduce){.mr-fade,.an-r,.an-l,.an-up{animation:none}}
+@keyframes catPop{0%{opacity:0;transform:scale(.3) translateY(20px)}55%{opacity:1;transform:scale(1.15)}100%{transform:scale(1)}}
+@keyframes catConfetti{0%{opacity:1;transform:translateY(-12vh) rotate(0)}100%{opacity:.85;transform:translateY(108vh) rotate(720deg)}}
+@keyframes catRun{0%{transform:translateX(-18vw)}100%{transform:translateX(118vw)}}
+@keyframes catWiggle{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
+@keyframes catToast{0%{opacity:0;transform:translateY(26px) scale(.9)}14%{opacity:1;transform:translateY(0) scale(1)}86%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-12px) scale(.95)}}
+.cat-wiggle{display:inline-block;animation:catWiggle 1.7s ease-in-out infinite;transform-origin:50% 85%}
 `}</style>
 
       <Fade delay={0}>
         <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /></div>
+            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6 cursor-pointer select-none" onClick={onLogoTap} draggable="false" /></div>
             <div className="flex items-center gap-2">
               <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -313,15 +364,18 @@ button{transition:transform .12s ease}
       <nav style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-xl s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
         {tabs.map((t) => {
           const Ic = t.icon; const on = tab === t.id;
+          const badge = t.id === "task" ? state.tasks.filter((x) => x.userId === me.id && !x.done).length : 0;
           return (
             <button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 py-1 rounded-xl flex-1 active:scale-90 transition ${on ? "text-orange-500" : "s-muted"}`}>
-              <Ic size={19} strokeWidth={on ? 2.5 : 2} /><span className="text-[9px] font-semibold">{t.label}</span>
+              <div className="relative"><Ic size={19} strokeWidth={on ? 2.5 : 2} />{badge > 0 && <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold rounded-full min-w-[15px] h-[15px] px-0.5 grid place-items-center leading-none">{badge > 9 ? "9+" : badge}</span>}</div>
+              <span className="text-[9px] font-semibold">{t.label}</span>
             </button>
           );
         })}
       </nav>
 
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} />
+      <FunFX />
 
       <ProfileModal open={profile} me={me} state={state} onClose={() => setProfile(false)} update={update} setMe={setMe} dark={dark} toggleDark={toggleDark} onLogout={() => { setProfile(false); setMe(null); setTab("home"); }} />
     </div>
@@ -329,6 +383,56 @@ button{transition:transform .12s ease}
 }
 
 /* ============ Auth ============ */
+// Background bara api interaktif: percikan hangat melayang naik & berpijar, lalu buyar saat disapu kursor/sentuhan.
+function EmberField() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const mouse = { x: -9999, y: -9999 };
+    let w = 0, h = 0, embers = [], raf = 0;
+    const sprite = document.createElement("canvas"); sprite.width = sprite.height = 64;
+    const sctx = sprite.getContext("2d");
+    const g = sctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, "rgba(255,238,205,1)"); g.addColorStop(0.25, "rgba(255,170,60,0.85)"); g.addColorStop(1, "rgba(255,110,20,0)");
+    sctx.fillStyle = g; sctx.beginPath(); sctx.arc(32, 32, 32, 0, 6.283); sctx.fill();
+    const make = (bottom) => ({ x: Math.random() * w, y: bottom ? h + Math.random() * 40 : Math.random() * h, r: 1.2 + Math.random() * 3.4, vy: -(0.25 + Math.random() * 0.75), vx: (Math.random() - 0.5) * 0.25, ph: Math.random() * 6.283, sa: 0.2 + Math.random() * 0.7, a: 0.3 + Math.random() * 0.6, fl: Math.random() * 6.283 });
+    const resize = () => {
+      w = canvas.clientWidth || window.innerWidth; h = canvas.clientHeight || window.innerHeight;
+      canvas.width = w * DPR; canvas.height = h * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      const n = Math.max(40, Math.min(130, Math.floor((w * h) / 9000)));
+      embers = Array.from({ length: n }, () => make(false));
+    };
+    const R = 130;
+    const tick = () => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "lighter";
+      for (const e of embers) {
+        e.ph += 0.02; e.fl += 0.08;
+        e.x += e.vx + Math.sin(e.ph) * e.sa * 0.3; e.y += e.vy;
+        let flare = 0;
+        const dx = e.x - mouse.x, dy = e.y - mouse.y, d2 = dx * dx + dy * dy;
+        if (d2 < R * R) { const d = Math.sqrt(d2) || 1, f = (R - d) / R; e.x += (dx / d) * f * 2.4; e.y += (dy / d) * f * 1.6; flare = f; }
+        if (e.y < -24 || e.x < -44 || e.x > w + 44) Object.assign(e, make(true));
+        const al = Math.max(0, e.a * (0.7 + Math.sin(e.fl) * 0.3) + flare * 0.5);
+        const s = e.r * (6 + flare * 4);
+        ctx.globalAlpha = al; ctx.drawImage(sprite, e.x - s / 2, e.y - s / 2, s, s);
+      }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+      raf = requestAnimationFrame(tick);
+    };
+    const onMove = (e) => { const r = canvas.getBoundingClientRect(); const t = e.touches && e.touches[0]; mouse.x = (t ? t.clientX : e.clientX) - r.left; mouse.y = (t ? t.clientY : e.clientY) - r.top; };
+    const onLeave = () => { mouse.x = -9999; mouse.y = -9999; };
+    resize(); tick();
+    window.addEventListener("resize", resize);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("touchmove", onMove, { passive: true });
+    window.addEventListener("mouseleave", onLeave);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); window.removeEventListener("mousemove", onMove); window.removeEventListener("touchmove", onMove); window.removeEventListener("mouseleave", onLeave); };
+  }, []);
+  return <canvas ref={ref} className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }} />;
+}
 function Auth({ state, onLogin, update }) {
   const [sel, setSel] = useState(null);
   const [pw, setPw] = useState(""); const [pw2, setPw2] = useState(""); const [err, setErr] = useState("");
@@ -344,8 +448,9 @@ function Auth({ state, onLogin, update }) {
     } else { pw === sel.password ? onLogin(sel) : setErr("Password salah."); }
   };
   return (
-    <div className="min-h-screen bg-slate-950 text-white grid place-items-center p-6">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-slate-950 text-white grid place-items-center p-6 relative overflow-hidden">
+      <EmberField />
+      <div className="w-full max-w-sm relative z-10">
         <img src={LOGO} alt="Motorell" className="h-10 mx-auto mb-1" />
         <p className="text-center text-orange-400 font-bold tracking-[0.3em] text-xs mb-8">OPS</p>
         {!sel ? (
@@ -547,7 +652,7 @@ function AbsenTab({ state, me, isOwner, update }) {
   const live = state.lives.find((l) => l.date === today());
   const [photo, setPhoto] = useState(""); const [liveLink, setLiveLink] = useState(""); const [livePhoto, setLivePhoto] = useState(""); const [zoom, setZoom] = useState("");
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
-  const clockIn = () => { if (!photo) return; update((s) => { s.attendance.push({ id: uid(), userId: me.id, date: today(), clockIn: now(), photo }); return s; }); setPhoto(""); };
+  const clockIn = () => { if (!photo) return; update((s) => { s.attendance.push({ id: uid(), userId: me.id, date: today(), clockIn: now(), photo }); return s; }); setPhoto(""); window.dispatchEvent(new CustomEvent("mr-greet", { detail: { msg: "Absen masuk tercatat. Semangat ya! 👋" } })); };
   const markLive = () => { if (!liveLink && !livePhoto) return; update((s) => { s.lives.push({ id: uid(), date: today(), by: me.id, link: liveLink, photo: livePhoto }); return s; }); setLiveLink(""); setLivePhoto(""); };
   const staff = state.users.filter((u) => u.role !== "owner");
 
@@ -611,11 +716,21 @@ function LiveProof({ live, userName, setZoom }) {
 /* ============ Keuangan ============ */
 function UangTab({ state, me, update }) {
   const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
+  const [q, setQ] = useState(""); const [fs, setFs] = useState("all");
+  const filtered = state.units.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
+  const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "terjual", l: "Terjual" }];
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
-      {state.units.length === 0 && <Card className="p-8 text-center"><Bike size={28} className="mx-auto text-orange-500 mb-2" /><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
-      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{state.units.map((u) => {
+      {state.units.length === 0 && <Card className="p-8 text-center"><div className="text-5xl mb-2 cat-wiggle">🐱</div><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
+      {state.units.length > 0 && (
+        <div className="space-y-2">
+          <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 s-muted" /><input className={inputCls + " !pl-9"} placeholder="Cari motor / plat…" value={q} onChange={(e) => setQ(e.target.value)} />{q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 s-muted"><X size={15} /></button>}</div>
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5">{FILTERS.map((ff) => <button key={ff.k} onClick={() => setFs(ff.k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${fs === ff.k ? "bg-orange-500 text-white" : "s-soft s-muted"}`}>{ff.l}</button>)}</div>
+        </div>
+      )}
+      {state.units.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{filtered.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
         return (
           <Card key={u.id} className="p-4">
@@ -673,19 +788,23 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
   const [confirmDel, setConfirmDel] = useState(false);
   useEffect(() => { setConfirmDel(false); }, [unitId]);
   const setField = (k, v) => update((s) => { s.units.find((u) => u.id === unitId)[k] = v; return s; });
-  const setStatus = (status) => update((s) => {
-    const u = s.units.find((x) => x.id === unitId);
-    const wasSold = u.status === "terjual";
-    u.status = status;
-    if (status === "terjual") {
-      if (!u.soldAt) u.soldAt = today();
-      if (!wasSold) s.users.filter((x) => x.saleBonus).forEach((x) => s.extras.push({ id: uid(), userId: x.id, amount: SALE_BONUS, note: `Bonus unit terjual: ${u.name}`, by: "u_own", date: today(), unitId: u.id, auto: true }));
-    } else {
-      u.soldAt = null;
-      if (wasSold) s.extras = s.extras.filter((e) => !(e.unitId === u.id && e.auto));
-    }
-    return s;
-  });
+  const setStatus = (status) => {
+    const wasSold = unit.status === "terjual";
+    update((s) => {
+      const u = s.units.find((x) => x.id === unitId);
+      const was = u.status === "terjual";
+      u.status = status;
+      if (status === "terjual") {
+        if (!u.soldAt) u.soldAt = today();
+        if (!was) s.users.filter((x) => x.saleBonus).forEach((x) => s.extras.push({ id: uid(), userId: x.id, amount: SALE_BONUS, note: `Bonus unit terjual: ${u.name}`, by: "u_own", date: today(), unitId: u.id, auto: true }));
+      } else {
+        u.soldAt = null;
+        if (was) s.extras = s.extras.filter((e) => !(e.unitId === u.id && e.auto));
+      }
+      return s;
+    });
+    if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
+  };
   const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
   const delUnit = () => { update((s) => { s.units = s.units.filter((u) => u.id !== unitId); s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
   return (
@@ -924,12 +1043,37 @@ function monthlyReport(state, ym) {
   });
   return { sold, total: sold.length, revenue, profit, groups, perEmp };
 }
+function ensureXLSX() {
+  return new Promise((resolve, reject) => {
+    if (window.XLSX) return resolve(window.XLSX);
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = () => reject(new Error("load failed"));
+    document.head.appendChild(s);
+  });
+}
 function LaporanTab({ state }) {
   const [ym, setYm] = useState(month());
   const r = monthlyReport(state, ym);
   const top = r.groups[0];
   const donut = r.groups.map((g) => ({ name: g.name, value: g.count }));
   const isCurrent = ym >= month();
+  const exportExcel = async () => {
+    let X;
+    try { X = await ensureXLSX(); } catch (e) { alert("Gagal memuat library Excel. Cek koneksi internet lalu coba lagi."); return; }
+    const expFor = (id) => state.expenses.filter((e) => e.unitId === id).reduce((a, e) => a + e.amount, 0);
+    const wb = X.utils.book_new();
+    const sum = [["Laporan Motorell", monthLabel(ym)], [], ["Unit terjual", r.total], ["Total omzet (Rp)", r.revenue], ["Total profit (Rp)", r.profit]];
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), "Ringkasan");
+    const unitRows = [["Nama", "Plat", "Modal beli", "Pengeluaran", "Harga jual", "Profit", "Tgl masuk", "Tgl keluar"]];
+    r.sold.forEach((u) => { const e = expFor(u.id); unitRows.push([u.name, u.plate || "", u.buyPrice, e, u.sellPrice || 0, (u.sellPrice || 0) - u.buyPrice - e, u.inDate || "", u.soldAt || ""]); });
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(unitRows), "Unit Terjual");
+    const empRows = [["Nama", "Posisi", "Hari hadir", "Hari tanpa live", "Extra cash (Rp)"]];
+    r.perEmp.forEach((p) => empRows.push([p.user.name, p.user.position, p.hadir, p.bolosLive, p.extra]));
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(empRows), "Per Karyawan");
+    X.writeFile(wb, `Laporan-Motorell-${ym}.xlsx`);
+  };
   return (
     <div className="space-y-3 pt-3 pb-4">
       <div className="flex items-center justify-between pt-1">
@@ -940,6 +1084,7 @@ function LaporanTab({ state }) {
           <button disabled={isCurrent} onClick={() => setYm(shiftMonth(ym, 1))} className={`p-1.5 rounded-lg s-surface ${isCurrent ? "opacity-30" : ""}`}><ChevronRight size={16} /></button>
         </div>
       </div>
+      <button onClick={exportExcel} className="w-full flex items-center justify-center gap-2 s-soft rounded-xl py-2.5 text-sm font-semibold text-emerald-600"><Download size={15} />Unduh laporan Excel ({monthLabel(ym)})</button>
 
       <Card className="p-4">
         <p className="font-bold text-sm mb-1 flex items-center gap-1.5"><PieIcon size={15} className="text-orange-500" />Motor terjual bulan ini</p>
