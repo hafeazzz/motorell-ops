@@ -181,7 +181,7 @@ const Tag = ({ children, color }) => <span className={`tg-${color} text-[11px] f
 function Avatar({ user, size = 36, onClick }) {
   const s = { width: size, height: size };
   if (user?.avatar) return <img src={user.avatar} onClick={onClick} style={s} className="rounded-full object-cover" alt="" />;
-  return <div onClick={onClick} style={{ ...s, background: user?.role === "owner" ? "#f97316" : "#475569", fontSize: size * 0.4 }} className="rounded-full grid place-items-center font-bold text-white uppercase shrink-0">{user?.name?.[0] || "?"}</div>;
+  return <div onClick={onClick} style={{ ...s, background: user?.role === "owner" ? "#f97316" : user?.role === "admin" ? "#3b82f6" : "#475569", fontSize: size * 0.4 }} className="rounded-full grid place-items-center font-bold text-white uppercase shrink-0">{user?.name?.[0] || "?"}</div>;
 }
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -247,6 +247,8 @@ export default function MotorellOps() {
   if (!me) return <Auth state={state} onLogin={setMe} update={update} />;
 
   const isOwner = me.role === "owner";
+  const isAdmin = me.role === "admin";
+  const isMgr = isOwner || isAdmin;
   const tabs = [
     { id: "home", label: "Beranda", icon: Home },
     { id: "absen", label: "Absen", icon: Clock },
@@ -254,6 +256,8 @@ export default function MotorellOps() {
     { id: "media", label: "Media", icon: Video },
     ...(isOwner
       ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
+      : isAdmin
+      ? [{ id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
       : [{ id: "task", label: "Task", icon: CheckSquare }]),
   ];
   const order = tabs.map((t) => t.id);
@@ -284,7 +288,7 @@ button{transition:transform .12s ease}
       <Fade delay={0}>
         <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /><span className="text-[10px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-md leading-none">v10</span></div>
+            <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6" /></div>
             <div className="flex items-center gap-2">
               <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -296,12 +300,12 @@ button{transition:transform .12s ease}
 
       <main className="px-4 -mt-3 overflow-hidden" onTouchStart={onTStart} onTouchEnd={onTEnd}>
         <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
-          {tab === "home" && <HomeTab state={state} me={me} isOwner={isOwner} go={goTab} />}
-          {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} update={update} />}
+          {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} />}
+          {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isMgr} update={update} />}
           {tab === "uang" && <UangTab state={state} me={me} update={update} />}
-          {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} update={update} />}
+          {tab === "media" && <MediaTab state={state} me={me} isOwner={isMgr} update={update} />}
           {tab === "task" && (isOwner ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
-          {tab === "tim" && <TimTab state={state} update={update} />}
+          {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} />}
           {tab === "laporan" && <LaporanTab state={state} />}
         </div>
       </main>
@@ -329,7 +333,7 @@ function Auth({ state, onLogin, update }) {
   const [sel, setSel] = useState(null);
   const [pw, setPw] = useState(""); const [pw2, setPw2] = useState(""); const [err, setErr] = useState("");
   const back = () => { setSel(null); setPw(""); setPw2(""); setErr(""); };
-  const firstTime = sel && sel.role === "staff" && !sel.password;
+  const firstTime = sel && (sel.role === "staff" || sel.role === "admin") && !sel.password;
   const submit = () => {
     if (sel.role === "owner") { (pw === OWNER_PW || (sel.password && pw === sel.password)) ? onLogin(sel) : setErr("Password salah."); return; }
     if (firstTime) {
@@ -353,6 +357,7 @@ function Auth({ state, onLogin, update }) {
                   <Avatar user={u} size={40} />
                   <div className="flex-1"><p className="font-semibold">{u.name}</p><p className="text-xs text-slate-400">{u.position}</p></div>
                   {u.role === "owner" && <ShieldCheck size={18} className="text-orange-400" />}
+                  {u.role === "admin" && <ShieldCheck size={18} className="text-blue-400" />}
                 </button>
               ))}
             </div>
@@ -440,7 +445,7 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
           </div>
         )}
       </div>
-      {me.role === "owner" && (
+      {(me.role === "owner" || me.role === "admin") && (
         <div className="s-soft rounded-xl px-4 py-3 mb-3">
           <p className="text-sm font-semibold flex items-center gap-2 mb-1"><Download size={16} />Backup data</p>
           <p className="text-[11px] s-muted mb-2.5">Unduh cadangan semua data jadi 1 file, simpan ke Google Drive sebagai arsip. "Pulihkan" mengembalikan data dari file backup.</p>
@@ -867,37 +872,37 @@ function OwnerTaskEditModal({ task, onClose, update }) {
 }
 
 /* ============ Tim ============ */
-function TimTab({ state, update }) {
+function TimTab({ state, update, isOwner }) {
   const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null);
   const [f, setF] = useState({ name: "", position: "Mekanik" }); const [taskTitle, setTaskTitle] = useState(""); const [extra, setExtra] = useState({ amount: "", note: "" });
   const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
   const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
   const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
-  const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false });
-  const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus }); setEditU(u); };
-  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; } reconcileSaleBonus(s); return s; }); setEditU(null); };
+  const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false, role: "staff" });
+  const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus, role: u.role }); setEditU(u); };
+  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; u.role = ef.role; } reconcileSaleBonus(s); return s; }); setEditU(null); };
   const resetPw = (id, name) => { if (window.confirm(`Reset password ${name}? Dia akan diminta bikin password baru saat login berikutnya.`)) update((s) => { const u = s.users.find((x) => x.id === id); if (u) u.password = ""; return s; }); };
   const delUser = (id, name) => { if (window.confirm(`Hapus anggota "${name}"? Tindakan ini permanen.`)) update((s) => { s.users = s.users.filter((x) => x.id !== id); s.tasks = s.tasks.filter((t) => t.userId !== id); return s; }); };
   return (
     <div className="space-y-3 pt-3">
-      <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim & Task</p><Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
+      <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim</p>{isOwner && <Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn>}</div>
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{state.users.filter((u) => u.role !== "owner").map((u) => {
         const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
         const extraM = state.extras.filter((x) => x.userId === u.id && inMonth(x.date, month())).reduce((a, x) => a + x.amount, 0);
         return (
           <Card key={u.id} className="p-4">
-            <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
+            <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}{u.role === "admin" && <span className="ml-1.5"><Tag color="blue">Admin</Tag></span>}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
             {extraM > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-2 flex items-center gap-1"><Gift size={12} />Extra cash bulan ini: {rp(extraM)}</p>}
             <div className="space-y-1 mb-2">{tasks.filter((t) => !t.done).length === 0 && <p className="text-[11px] s-muted">Tidak ada task aktif.</p>}{tasks.filter((t) => !t.done).map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted"><Circle size={13} /><span>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
-            <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>
-            <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border"><button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button><button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button><button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button></div>
+            {isOwner && <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>}
+            <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border">{isOwner && <button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button>}<button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button>{isOwner && <button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button>}</div>
           </Card>
         );
       })}</div>
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
       <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Kasih extra cash (bonus)"><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">Beri bonus</Btn></Modal>
-      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
+      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
 }
