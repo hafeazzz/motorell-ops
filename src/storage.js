@@ -132,9 +132,10 @@ const storage = {
 const CHAT_TABLE = "chat";
 storage.chatList = async () => {
   try {
-    const { data, error } = await supabase.from(CHAT_TABLE).select("*").order("ts", { ascending: true }).limit(300);
+    // ambil 300 pesan TERBARU, lalu balik urutannya jadi lama→baru untuk ditampilkan
+    const { data, error } = await supabase.from(CHAT_TABLE).select("*").order("ts", { ascending: false }).limit(300);
     if (error) throw error;
-    return data || [];
+    return (data || []).reverse();
   } catch (e) { console.error("chatList error:", e); return []; }
 };
 storage.chatSend = async (m) => {
@@ -144,6 +145,14 @@ storage.chatSend = async (m) => {
 storage.chatDelete = async (id) => {
   try { const { error } = await supabase.from(CHAT_TABLE).delete().eq("id", id); if (error) throw error; return true; }
   catch (e) { console.error("chatDelete error:", e); return false; }
+};
+// Auto-bersih: simpan hanya `keep` pesan terbaru, hapus sisanya (chat ngurus dirinya sendiri).
+storage.chatPrune = async (keep = 300) => {
+  try {
+    const { data, error } = await supabase.from(CHAT_TABLE).select("ts").order("ts", { ascending: false }).range(keep, keep);
+    if (error || !data || !data.length) return; // pesan masih ≤ keep, tidak ada yang perlu dihapus
+    await supabase.from(CHAT_TABLE).delete().lt("ts", data[0].ts);
+  } catch (e) { console.error("chatPrune error:", e); }
 };
 storage.chatSubscribe = (cb) => {
   const channel = supabase

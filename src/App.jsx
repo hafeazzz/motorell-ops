@@ -237,7 +237,7 @@ export default function MotorellOps() {
   useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = reconcileSaleBonus(next); if (changed || c2) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
     if (!window.storage || !window.storage.subscribe) return;
-    const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then(setState); });
+    const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then((s) => { setState(s); setMe((m) => (m ? (s.users.find((u) => u.id === m.id) || m) : m)); }); });
     return unsub;
   }, []);
   const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
@@ -1003,6 +1003,7 @@ function ChatPage({ open, onClose, state, me, update }) {
   useEffect(() => {
     if (!open) return;
     load();
+    if (window.storage.chatPrune) window.storage.chatPrune(300);
     const unsub = window.storage.chatSubscribe ? window.storage.chatSubscribe(() => load()) : null;
     return () => { if (unsub) unsub(); };
   }, [open]);
