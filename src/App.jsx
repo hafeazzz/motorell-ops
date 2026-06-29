@@ -352,9 +352,9 @@ button{transition:transform .12s ease}
       <main className="px-4 -mt-3 overflow-hidden" onTouchStart={onTStart} onTouchEnd={onTEnd}>
         <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
           {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} />}
-          {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isMgr} update={update} />}
+          {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "uang" && <UangTab state={state} me={me} update={update} />}
-          {tab === "media" && <MediaTab state={state} me={me} isOwner={isMgr} update={update} />}
+          {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "task" && (isOwner ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
           {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} />}
           {tab === "laporan" && <LaporanTab state={state} />}
@@ -566,6 +566,54 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
 /* ============ Beranda ============ */
 function expByUnit(state, unitId) { return state.expenses.filter((e) => e.unitId === unitId).reduce((a, e) => a + e.amount, 0); }
 
+// Banner sapaan dengan aurora cahaya yang mengalir; cahayanya condong ke arah kursor/sentuhan.
+function GreetingBanner({ children }) {
+  const wrapRef = useRef(null); const cvRef = useRef(null);
+  useEffect(() => {
+    const wrap = wrapRef.current, canvas = cvRef.current; if (!wrap || !canvas) return;
+    const ctx = canvas.getContext("2d");
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const mouse = { x: 0.5, y: 0.5, active: false };
+    let w = 0, h = 0, raf = 0, t = 0;
+    const blobs = [
+      { c: "249,115,22", ax: 0.32, ay: 0.42, sx: 0.0042, sy: 0.0061, r: 0.62, f: 0.05 },
+      { c: "244,63,94", ax: 0.36, ay: 0.30, sx: 0.0055, sy: 0.0037, r: 0.55, f: 0.0 },
+      { c: "251,191,36", ax: 0.40, ay: 0.34, sx: 0.0031, sy: 0.0072, r: 0.5, f: 0.06 },
+      { c: "168,85,247", ax: 0.30, ay: 0.40, sx: 0.0067, sy: 0.0048, r: 0.46, f: 0.0 },
+    ];
+    const resize = () => { w = wrap.clientWidth; h = wrap.clientHeight; canvas.width = w * DPR; canvas.height = h * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); };
+    const tick = () => {
+      t += 1; ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#0b1020"; ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "lighter";
+      blobs.forEach((b, i) => {
+        let bx = (0.5 + Math.sin(t * b.sx + i) * b.ax) * w;
+        let by = (0.5 + Math.cos(t * b.sy + i * 1.7) * b.ay) * h;
+        if (mouse.active) { bx += (mouse.x * w - bx) * b.f; by += (mouse.y * h - by) * b.f; }
+        const rad = b.r * Math.max(w, h);
+        const g = ctx.createRadialGradient(bx, by, 0, bx, by, rad);
+        g.addColorStop(0, `rgba(${b.c},0.5)`); g.addColorStop(1, `rgba(${b.c},0)`);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      });
+      ctx.globalCompositeOperation = "source-over";
+      raf = requestAnimationFrame(tick);
+    };
+    const onMove = (e) => { const r = canvas.getBoundingClientRect(); const tch = e.touches && e.touches[0]; const cx = (tch ? tch.clientX : e.clientX) - r.left, cy = (tch ? tch.clientY : e.clientY) - r.top; mouse.x = Math.max(0, Math.min(1, cx / r.width)); mouse.y = Math.max(0, Math.min(1, cy / r.height)); mouse.active = true; };
+    const onLeave = () => { mouse.active = false; };
+    resize(); tick();
+    window.addEventListener("resize", resize);
+    wrap.addEventListener("mousemove", onMove);
+    wrap.addEventListener("touchmove", onMove, { passive: true });
+    wrap.addEventListener("mouseleave", onLeave);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); wrap.removeEventListener("mousemove", onMove); wrap.removeEventListener("touchmove", onMove); wrap.removeEventListener("mouseleave", onLeave); };
+  }, []);
+  return (
+    <div ref={wrapRef} className="relative overflow-hidden rounded-3xl">
+      <canvas ref={cvRef} className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }} />
+      <div className="relative z-10 px-5 py-6" style={{ textShadow: "0 1px 10px rgba(0,0,0,0.45)" }}>{children}</div>
+    </div>
+  );
+}
 function HomeTab({ state, me, isOwner, go }) {
   const g = greeting();
   const proses = state.units.filter((u) => u.status === "proses").length;
@@ -580,7 +628,7 @@ function HomeTab({ state, me, isOwner, go }) {
 
   return (
     <div className="space-y-3 pt-1">
-      <Fade delay={40}><div className="pt-6 pb-1"><p className="text-2xl font-extrabold leading-snug">{g.t}, {g.e}</p><p className="text-base s-muted mt-0.5">{me.name}</p></div></Fade>
+      <Fade delay={40}><GreetingBanner><p className="text-2xl font-extrabold leading-snug text-white">{g.t}, {g.e}</p><p className="text-base text-white/75 mt-0.5">{me.name}</p></GreetingBanner></Fade>
 
       <Fade delay={120}>
         {isOwner ? (
@@ -647,7 +695,7 @@ const Quick = ({ label, icon: Ic, onClick }) => (
 );
 
 /* ============ Absensi ============ */
-function AbsenTab({ state, me, isOwner, update }) {
+function AbsenTab({ state, me, isOwner, isMgr, update }) {
   const myToday = state.attendance.find((a) => a.userId === me.id && a.date === today());
   const live = state.lives.find((l) => l.date === today());
   const [photo, setPhoto] = useState(""); const [liveLink, setLiveLink] = useState(""); const [livePhoto, setLivePhoto] = useState(""); const [zoom, setZoom] = useState("");
@@ -676,7 +724,7 @@ function AbsenTab({ state, me, isOwner, update }) {
         </Card>
       )}
 
-      {isOwner && (
+      {isMgr && (
         <>
           <p className="font-bold text-lg pt-1">Laporan pegawai masuk</p>
           <Card className="p-4">
@@ -835,24 +883,24 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
 }
 
 /* ============ Media ============ */
-function MediaTab({ state, me, isOwner, update }) {
+function MediaTab({ state, me, isOwner, isMgr, update }) {
   const [link, setLink] = useState(""); const [note, setNote] = useState(""); const [cat, setCat] = useState("ADS"); const [edit, setEdit] = useState(null);
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
   const submit = () => { if (!link) return; update((s) => { s.media.unshift({ id: uid(), by: me.id, link, note, category: cat, verified: false, date: today() }); return s; }); setLink(""); setNote(""); setCat("ADS"); };
   const verify = (id) => update((s) => { s.media.find((m) => m.id === id).verified = true; return s; });
-  const list = isOwner ? state.media : state.media.filter((m) => m.by === me.id);
+  const list = isMgr ? state.media : state.media.filter((m) => m.by === me.id);
   return (
     <div className="space-y-3 pt-3">
       {!isOwner && <Card className="p-4"><p className="font-bold mb-3">Upload konten</p><input className={`${inputCls} mb-2`} placeholder="Link konten (TikTok/IG/YouTube)…" value={link} onChange={(e) => setLink(e.target.value)} /><input className={`${inputCls} mb-2`} placeholder="Judul / keterangan konten" value={note} onChange={(e) => setNote(e.target.value)} /><p className="text-xs font-semibold s-muted mb-1.5">Kategori konten</p><CatChips value={cat} onChange={setCat} /><Btn onClick={submit} className="w-full mt-3"><LinkIcon size={15} className="inline mr-1.5 -mt-0.5" />Kirim untuk verifikasi</Btn></Card>}
-      <p className="font-bold text-lg">{isOwner ? "Verifikasi konten" : "Konten kamu"}</p>
+      <p className="font-bold text-lg">{isMgr ? "Verifikasi konten" : "Konten kamu"}</p>
       {list.length === 0 && <p className="text-sm s-muted">Belum ada konten.</p>}
-      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{list.map((m) => { const canEdit = isOwner || m.by === me.id; return (
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{list.map((m) => { const canEdit = isMgr || m.by === me.id; return (
         <Card key={m.id} className="p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1"><div className="flex items-center gap-2 mb-1"><Tag color={MCAT_COLOR[m.category] || "slate"}>{m.category}</Tag>{m.verified ? <Tag color="emerald">Terverifikasi</Tag> : <Tag color="amber">Pending</Tag>}</div><p className="font-semibold text-sm">{m.note || "Tanpa judul"}</p><p className="text-[11px] s-muted mb-1">oleh {userName(m.by)} · {m.date}</p><a href={m.link} target="_blank" rel="noreferrer" className="text-xs text-blue-500 break-all flex items-center gap-1"><LinkIcon size={12} />{m.link}</a></div>
             {canEdit && <button onClick={() => setEdit(m)} className="s-muted p-1"><Pencil size={15} /></button>}
           </div>
-          {isOwner && !m.verified && <Btn variant="dark" onClick={() => verify(m.id)} className="w-full mt-3"><BadgeCheck size={15} className="inline mr-1.5 -mt-0.5" />Verifikasi</Btn>}
+          {isMgr && !m.verified && <Btn variant="dark" onClick={() => verify(m.id)} className="w-full mt-3"><BadgeCheck size={15} className="inline mr-1.5 -mt-0.5" />Verifikasi</Btn>}
         </Card>
       ); })}</div>
       <MediaEditModal item={edit} onClose={() => setEdit(null)} update={update} />
