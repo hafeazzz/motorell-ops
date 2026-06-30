@@ -126,9 +126,10 @@ function normalize(s) {
     tasks: arr(s.tasks, []),
     chat: arr(s.chat, []),
   };
-  out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u }));
+  out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
   out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", ...m }));
+  out._sbFix = s._sbFix === true;
   return out;
 }
 async function loadState() {
@@ -159,6 +160,13 @@ function stripAutoExtras(s) {
   const before = (s.extras || []).length;
   s.extras = (s.extras || []).filter((e) => !e.auto);
   return s.extras.length !== before;
+}
+// Perbaikan sekali-jalan: pastikan Omen & Beceng aktif bonus penjualannya (toggle sempat OFF).
+function fixSaleBonus(s) {
+  if (s._sbFix) return false;
+  (s.users || []).forEach((u) => { if (u.id === "u_omen" || u.id === "u_beceng") u.saleBonus = true; });
+  s._sbFix = true;
+  return true;
 }
 
 /* ============ UI bits ============ */
@@ -273,7 +281,7 @@ export default function MotorellOps() {
   const logoTaps = useRef(0); const logoTimer = useRef(null);
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
 
-  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); if (changed || c2) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
+  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); const c3 = fixSaleBonus(next); if (changed || c2 || c3) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
     if (!window.storage || !window.storage.subscribe) return;
     const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then((s) => { setState(s); setMe((m) => (m ? (s.users.find((u) => u.id === m.id) || m) : m)); }); });
@@ -296,7 +304,7 @@ export default function MotorellOps() {
     ...(isOwner
       ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
       : isAdmin
-      ? [{ id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
+      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
       : [{ id: "task", label: "Task", icon: CheckSquare }]),
   ];
   const order = tabs.map((t) => t.id);
@@ -617,10 +625,12 @@ function HomeTab({ state, me, isOwner, go }) {
   const totalExp = state.expenses.reduce((a, e) => a + e.amount, 0);
   const sold = state.units.filter((u) => u.status === "terjual");
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
+  const stokAktif = state.units.filter((u) => u.status !== "terjual").length;
+  const monthProfit = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
   const todayAbsen = state.attendance.filter((a) => a.date === today());
   const myTasks = state.tasks.filter((t) => t.userId === me.id && !t.done);
-  const myExtras = manualExtras(state, me.id);
-  const saleBonus = saleBonusFor(state, me);
+  const myExtras = manualExtras(state, me.id, month());
+  const saleBonus = saleBonusFor(state, me, month());
   const extraTotal = saleBonus + myExtras.reduce((a, x) => a + x.amount, 0);
 
   return (
@@ -630,10 +640,10 @@ function HomeTab({ state, me, isOwner, go }) {
       <Fade delay={120}>
         {isOwner ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Stat label="Total Unit" value={state.units.length} sub={`${proses} proses`} icon={Bike} color="#f97316" />
+            <Stat label="Stok Aktif" value={stokAktif} sub={`${monthSold} terjual bln ini`} icon={Bike} color="#f97316" />
             <Stat label="Hadir Hari Ini" value={todayAbsen.length} sub={`dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
             <Stat label="Total Pengeluaran" value={rp(totalExp)} small icon={Wallet} color="#a855f7" />
-            <Stat label="Profit (terjual)" value={rp(profit)} small icon={TrendingUp} color="#10b981" />
+            <Stat label="Profit Bln Ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" />
           </div>
         ) : (
           <div className="space-y-3">
@@ -651,7 +661,7 @@ function HomeTab({ state, me, isOwner, go }) {
           <Card className="p-4 border-orange-200" >
             <div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: "#f9731622" }}><Gift size={16} className="text-orange-500" /></div><div><p className="text-xs font-semibold s-muted">Extra cash kamu</p><p className="text-xl font-extrabold">{rp(extraTotal)}</p></div></div>
             <div className="space-y-1">
-              {me.saleBonus && <div className="flex justify-between text-xs s-muted"><span>Bonus penjualan ({sold.length} unit terjual)</span><span className="font-bold text-orange-500">+{rp(saleBonus)}</span></div>}
+              {me.saleBonus && <div className="flex justify-between text-xs s-muted"><span>Bonus penjualan ({monthSold} unit terjual bulan ini)</span><span className="font-bold text-orange-500">+{rp(saleBonus)}</span></div>}
               {[...myExtras].reverse().slice(0, 4).map((x) => (<div key={x.id} className="flex justify-between text-xs s-muted"><span>{x.note || "Bonus"}</span><span className="font-bold text-orange-500">+{rp(x.amount)}</span></div>))}
             </div>
           </Card>
@@ -763,19 +773,22 @@ function LiveProof({ live, userName, setZoom }) {
 function UangTab({ state, me, update }) {
   const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
   const [q, setQ] = useState(""); const [fs, setFs] = useState("all");
-  const filtered = state.units.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
+  const visible = state.units.filter((u) => u.status !== "terjual" || !u.soldAt || inMonth(u.soldAt, month()));
+  const archived = state.units.filter((u) => u.status === "terjual" && u.soldAt && !inMonth(u.soldAt, month())).length;
+  const filtered = visible.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
   const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "terjual", l: "Terjual" }];
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
       {state.units.length === 0 && <Card className="p-8 text-center"><div className="text-5xl mb-2 cat-wiggle">🐱</div><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
-      {state.units.length > 0 && (
+      {visible.length > 0 && (
         <div className="space-y-2">
           <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 s-muted" /><input className={inputCls + " !pl-9"} placeholder="Cari motor / plat…" value={q} onChange={(e) => setQ(e.target.value)} />{q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 s-muted"><X size={15} /></button>}</div>
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">{FILTERS.map((ff) => <button key={ff.k} onClick={() => setFs(ff.k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${fs === ff.k ? "bg-orange-500 text-white" : "s-soft s-muted"}`}>{ff.l}</button>)}</div>
         </div>
       )}
-      {state.units.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
+      {archived > 0 && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="text-orange-500" />{archived} motor terjual bulan lalu diarsipkan — rekapnya ada di Laporan.</p>}
+      {visible.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{filtered.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
         return (
@@ -1045,11 +1058,14 @@ function OwnerTaskEditModal({ task, onClose, update }) {
 
 /* ============ Tim ============ */
 function TimTab({ state, update, isOwner }) {
-  const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null);
+  const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null); const [editingExtra, setEditingExtra] = useState(null);
   const [f, setF] = useState({ name: "", position: "Mekanik" }); const [taskTitle, setTaskTitle] = useState(""); const [extra, setExtra] = useState({ amount: "", note: "" });
+  const openGive = (uid2) => { setEditingExtra(null); setExtra({ amount: "", note: "" }); setExtraTo(uid2); };
+  const openEditExtra = (ex) => { setExtra({ amount: String(ex.amount), note: ex.note || "" }); setEditingExtra(ex); setExtraTo(ex.userId); };
+  const delExtra = (id) => { if (window.confirm("Hapus extra cash ini?")) update((s) => { s.extras = s.extras.filter((e) => e.id !== id); return s; }); };
   const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
   const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
-  const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
+  const giveExtra = () => { if (!extra.amount) return; update((s) => { if (editingExtra) { const e = s.extras.find((x) => x.id === editingExtra.id); if (e) { e.amount = +extra.amount; e.note = extra.note; } } else { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); } return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); setEditingExtra(null); };
   const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false, role: "staff" });
   const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus, role: u.role }); setEditU(u); };
   const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; u.role = ef.role; } return s; }); setEditU(null); };
@@ -1061,21 +1077,21 @@ function TimTab({ state, update, isOwner }) {
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{state.users.filter((u) => u.role !== "owner").map((u) => {
         const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
         const manualSum = manualExtras(state, u.id).reduce((a, x) => a + x.amount, 0);
-        const soldN = state.units.filter((x) => x.status === "terjual").length;
+        const soldN = state.units.filter((x) => x.status === "terjual" && inMonth(x.soldAt, month())).length;
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}{u.role === "admin" && <span className="ml-1.5"><Tag color="blue">Admin</Tag></span>}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
-            {u.saleBonus && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Bonus penjualan: {soldN} unit terjual = {rp(soldN * SALE_BONUS)}</p>}
-            {manualSum > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Extra cash lain: {rp(manualSum)}</p>}
+            {u.saleBonus && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Bonus penjualan bulan ini: {soldN} unit = {rp(soldN * SALE_BONUS)}</p>}
+            {isOwner ? manualExtras(state, u.id).map((ex) => (<div key={ex.id} className="flex items-center justify-between text-[11px] mb-1.5"><span className="s-muted flex items-center gap-1"><Gift size={11} className="text-orange-500" />{ex.note || "Extra cash"}: <b className="text-orange-500">{rp(ex.amount)}</b></span><span className="flex gap-2 shrink-0"><button onClick={() => openEditExtra(ex)} className="s-muted"><Pencil size={12} /></button><button onClick={() => delExtra(ex.id)} className="text-rose-400"><Trash2 size={12} /></button></span></div>)) : (manualSum > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Extra cash lain: {rp(manualSum)}</p>)}
             <div className="space-y-1 mb-2">{tasks.filter((t) => !t.done).length === 0 && <p className="text-[11px] s-muted">Tidak ada task aktif.</p>}{tasks.filter((t) => !t.done).map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted"><Circle size={13} /><span>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
-            {isOwner && <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>}
+            {isOwner && <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => openGive(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>}
             <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border">{isOwner && <button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button>}<button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button>{isOwner && <button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button>}</div>
           </Card>
         );
       })}</div>
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
-      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Kasih extra cash (bonus)"><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">Beri bonus</Btn></Modal>
+      <Modal open={!!extraTo} onClose={() => { setExtraTo(null); setEditingExtra(null); }} title={editingExtra ? "Edit extra cash" : "Kasih extra cash (bonus)"}><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">{editingExtra ? "Simpan perubahan" : "Beri bonus"}</Btn></Modal>
       <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
