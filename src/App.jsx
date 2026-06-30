@@ -75,6 +75,11 @@ function clickSound(e) {
 /* ============ Config ============ */
 const OWNER_PW = "@Motorell#";
 const SALE_BONUS = 200000;
+// Bonus penjualan dihitung langsung dari jumlah unit terjual (tanpa simpan), jadi selalu sinkron.
+const soldUnitCount = (s, ym) => (s.units || []).filter((u) => u.status === "terjual" && (!ym || inMonth(u.soldAt, ym))).length;
+const saleBonusFor = (s, u, ym) => (u && u.saleBonus ? soldUnitCount(s, ym) * SALE_BONUS : 0);
+const manualExtras = (s, userId, ym) => (s.extras || []).filter((x) => x.userId === userId && !x.auto && (!ym || inMonth(x.date, ym)));
+const totalExtraFor = (s, u, ym) => saleBonusFor(s, u, ym) + manualExtras(s, u.id, ym).reduce((a, x) => a + x.amount, 0);
 const CATS = {
   service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
   jasa: { label: "Jasa", icon: Hand, color: "#a855f7", ph: "cth: ongkos pasang, jasa bengkel…" },
@@ -149,22 +154,11 @@ function prunePhotos(state) {
   return { next, changed };
 }
 
-// Pastikan SETIAP unit terjual sudah memberi bonus ke tiap user ber-saleBonus (sekali per unit per user).
-// Ini menambal unit yang ditandai "terjual" sebelum fitur/toggle aktif, dan tetap idempoten.
-function reconcileSaleBonus(s) {
-  let changed = false;
-  const bonusUsers = (s.users || []).filter((u) => u.saleBonus);
-  if (!bonusUsers.length) return false;
-  (s.units || []).filter((u) => u.status === "terjual").forEach((unit) => {
-    bonusUsers.forEach((user) => {
-      const has = (s.extras || []).some((e) => e.auto && e.unitId === unit.id && e.userId === user.id);
-      if (!has) {
-        s.extras.push({ id: uid(), userId: user.id, amount: SALE_BONUS, note: `Bonus unit terjual: ${unit.name}`, by: "u_own", date: unit.soldAt || today(), unitId: unit.id, auto: true });
-        changed = true;
-      }
-    });
-  });
-  return changed;
+// Bonus penjualan sekarang dihitung dinamis, jadi bonus auto yang lama dibersihkan agar tidak dobel.
+function stripAutoExtras(s) {
+  const before = (s.extras || []).length;
+  s.extras = (s.extras || []).filter((e) => !e.auto);
+  return s.extras.length !== before;
 }
 
 /* ============ UI bits ============ */
@@ -279,7 +273,7 @@ export default function MotorellOps() {
   const logoTaps = useRef(0); const logoTimer = useRef(null);
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
 
-  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = reconcileSaleBonus(next); if (changed || c2) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
+  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); if (changed || c2) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
     if (!window.storage || !window.storage.subscribe) return;
     const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then((s) => { setState(s); setMe((m) => (m ? (s.users.find((u) => u.id === m.id) || m) : m)); }); });
@@ -319,6 +313,8 @@ export default function MotorellOps() {
 .mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
 .mr-app.dark{--bg:#0a0f1a;--surface:#121a2b;--soft:#1b2540;--border:#26324d;--text:#e7edf7;--muted:#94a6c4;--header:#070b14}
 .s-bg{background:var(--bg)}.s-surface{background:var(--surface)}.s-soft{background:var(--soft)}.s-border{border-color:var(--border)}.s-text{color:var(--text)}.s-muted{color:var(--muted)}
+.mr-nav{background:var(--surface);border-top:1px solid var(--border)}
+@media(min-width:768px){.mr-nav{border-top:none;border:1px solid rgba(226,232,240,.85);background:rgba(255,255,255,.7);-webkit-backdrop-filter:saturate(1.7) blur(20px);backdrop-filter:saturate(1.7) blur(20px);box-shadow:0 18px 50px rgba(2,6,23,.16)}.mr-app.dark .mr-nav{border:1px solid rgba(255,255,255,.1);background:rgba(18,26,43,.6);box-shadow:0 18px 50px rgba(0,0,0,.55)}}
 .s-input{background:var(--soft);border:1px solid var(--border);color:var(--text)}.s-input::placeholder{color:var(--muted);opacity:.8}.s-input:focus{outline:none;border-color:#fb923c}
 .tg-emerald{background:#ecfdf5;color:#047857}.tg-rose{background:#fff1f2;color:#e11d48}.tg-amber{background:#fffbeb;color:#b45309}.tg-slate{background:#f1f5f9;color:#64748b}.tg-blue{background:#eff6ff;color:#2563eb}.tg-purple{background:#faf5ff;color:#9333ea}
 .mr-app.dark .tg-emerald{background:rgba(16,185,129,.16);color:#6ee7b7}.mr-app.dark .tg-rose{background:rgba(244,63,94,.16);color:#fda4af}.mr-app.dark .tg-amber{background:rgba(245,158,11,.16);color:#fcd34d}.mr-app.dark .tg-slate{background:rgba(148,163,184,.16);color:#cbd5e1}.mr-app.dark .tg-blue{background:rgba(59,130,246,.16);color:#93c5fd}.mr-app.dark .tg-purple{background:rgba(168,85,247,.16);color:#d8b4fe}
@@ -361,14 +357,14 @@ button{transition:transform .12s ease}
         </div>
       </main>
 
-      <nav style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-xl s-surface s-border border-t flex justify-around px-0.5 py-1.5 z-30">
+      <nav className="mr-nav fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md flex justify-around px-0.5 py-1.5 z-30 pb-[calc(0.375rem_+_env(safe-area-inset-bottom))] md:bottom-6 md:max-w-4xl md:rounded-full md:px-8 md:py-3 md:pb-3 md:[&_svg]:w-6 md:[&_svg]:h-6">
         {tabs.map((t) => {
           const Ic = t.icon; const on = tab === t.id;
           const badge = t.id === "task" ? state.tasks.filter((x) => x.userId === me.id && !x.done).length : 0;
           return (
-            <button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 py-1 rounded-xl flex-1 active:scale-90 transition ${on ? "text-orange-500" : "s-muted"}`}>
+            <button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 md:gap-1 py-1 md:py-1.5 rounded-xl flex-1 active:scale-90 transition ${on ? "text-orange-500" : "s-muted"}`}>
               <div className="relative"><Ic size={19} strokeWidth={on ? 2.5 : 2} />{badge > 0 && <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold rounded-full min-w-[15px] h-[15px] px-0.5 grid place-items-center leading-none">{badge > 9 ? "9+" : badge}</span>}</div>
-              <span className="text-[9px] font-semibold">{t.label}</span>
+              <span className="text-[9px] md:text-[11px] font-semibold">{t.label}</span>
             </button>
           );
         })}
@@ -623,12 +619,13 @@ function HomeTab({ state, me, isOwner, go }) {
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
   const todayAbsen = state.attendance.filter((a) => a.date === today());
   const myTasks = state.tasks.filter((t) => t.userId === me.id && !t.done);
-  const myExtras = state.extras.filter((x) => x.userId === me.id && inMonth(x.date, month()));
-  const extraTotal = myExtras.reduce((a, x) => a + x.amount, 0);
+  const myExtras = manualExtras(state, me.id);
+  const saleBonus = saleBonusFor(state, me);
+  const extraTotal = saleBonus + myExtras.reduce((a, x) => a + x.amount, 0);
 
   return (
     <div className="space-y-3 pt-1">
-      <Fade delay={40}><GreetingBanner><p className="text-2xl font-extrabold leading-snug text-white">{g.t}, {g.e}</p><p className="text-base text-white/75 mt-0.5">{me.name}</p></GreetingBanner></Fade>
+      <Fade delay={40}><div className="pt-5"><GreetingBanner><p className="text-2xl font-extrabold leading-snug text-white">{g.t}, {g.e}</p><p className="text-base text-white/75 mt-0.5">{me.name}</p></GreetingBanner></div></Fade>
 
       <Fade delay={120}>
         {isOwner ? (
@@ -649,12 +646,13 @@ function HomeTab({ state, me, isOwner, go }) {
         )}
       </Fade>
 
-      {!isOwner && extraTotal > 0 && (
+      {!isOwner && (me.saleBonus || extraTotal > 0) && (
         <Fade delay={180}>
           <Card className="p-4 border-orange-200" >
-            <div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: "#f9731622" }}><Gift size={16} className="text-orange-500" /></div><div><p className="text-xs font-semibold s-muted">Extra cash dari Owner (bulan ini)</p><p className="text-xl font-extrabold">{rp(extraTotal)}</p></div></div>
+            <div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: "#f9731622" }}><Gift size={16} className="text-orange-500" /></div><div><p className="text-xs font-semibold s-muted">Extra cash kamu</p><p className="text-xl font-extrabold">{rp(extraTotal)}</p></div></div>
             <div className="space-y-1">
-              {myExtras.slice(0, 4).map((x) => (<div key={x.id} className="flex justify-between text-xs s-muted"><span>{x.note || "Bonus"}</span><span className="font-bold text-orange-500">+{rp(x.amount)}</span></div>))}
+              {me.saleBonus && <div className="flex justify-between text-xs s-muted"><span>Bonus penjualan ({sold.length} unit terjual)</span><span className="font-bold text-orange-500">+{rp(saleBonus)}</span></div>}
+              {[...myExtras].reverse().slice(0, 4).map((x) => (<div key={x.id} className="flex justify-between text-xs s-muted"><span>{x.note || "Bonus"}</span><span className="font-bold text-orange-500">+{rp(x.amount)}</span></div>))}
             </div>
           </Card>
         </Fade>
@@ -853,15 +851,9 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
     const wasSold = unit.status === "terjual";
     update((s) => {
       const u = s.units.find((x) => x.id === unitId);
-      const was = u.status === "terjual";
       u.status = status;
-      if (status === "terjual") {
-        if (!u.soldAt) u.soldAt = today();
-        if (!was) s.users.filter((x) => x.saleBonus).forEach((x) => s.extras.push({ id: uid(), userId: x.id, amount: SALE_BONUS, note: `Bonus unit terjual: ${u.name}`, by: "u_own", date: today(), unitId: u.id, auto: true }));
-      } else {
-        u.soldAt = null;
-        if (was) s.extras = s.extras.filter((e) => !(e.unitId === u.id && e.auto));
-      }
+      if (status === "terjual") { if (!u.soldAt) u.soldAt = today(); }
+      else { u.soldAt = null; }
       return s;
     });
     if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
@@ -1060,7 +1052,7 @@ function TimTab({ state, update, isOwner }) {
   const giveExtra = () => { if (!extra.amount) return; update((s) => { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); };
   const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false, role: "staff" });
   const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus, role: u.role }); setEditU(u); };
-  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; u.role = ef.role; } reconcileSaleBonus(s); return s; }); setEditU(null); };
+  const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; u.role = ef.role; } return s; }); setEditU(null); };
   const resetPw = (id, name) => { if (window.confirm(`Reset password ${name}? Dia akan diminta bikin password baru saat login berikutnya.`)) update((s) => { const u = s.users.find((x) => x.id === id); if (u) u.password = ""; return s; }); };
   const delUser = (id, name) => { if (window.confirm(`Hapus anggota "${name}"? Tindakan ini permanen.`)) update((s) => { s.users = s.users.filter((x) => x.id !== id); s.tasks = s.tasks.filter((t) => t.userId !== id); return s; }); };
   return (
@@ -1068,11 +1060,13 @@ function TimTab({ state, update, isOwner }) {
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim</p>{isOwner && <Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn>}</div>
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{state.users.filter((u) => u.role !== "owner").map((u) => {
         const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
-        const extraM = state.extras.filter((x) => x.userId === u.id && inMonth(x.date, month())).reduce((a, x) => a + x.amount, 0);
+        const manualSum = manualExtras(state, u.id).reduce((a, x) => a + x.amount, 0);
+        const soldN = state.units.filter((x) => x.status === "terjual").length;
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}{u.role === "admin" && <span className="ml-1.5"><Tag color="blue">Admin</Tag></span>}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
-            {extraM > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-2 flex items-center gap-1"><Gift size={12} />Extra cash bulan ini: {rp(extraM)}</p>}
+            {u.saleBonus && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Bonus penjualan: {soldN} unit terjual = {rp(soldN * SALE_BONUS)}</p>}
+            {manualSum > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Extra cash lain: {rp(manualSum)}</p>}
             <div className="space-y-1 mb-2">{tasks.filter((t) => !t.done).length === 0 && <p className="text-[11px] s-muted">Tidak ada task aktif.</p>}{tasks.filter((t) => !t.done).map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted"><Circle size={13} /><span>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
             {isOwner && <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => setExtraTo(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>}
             <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border">{isOwner && <button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button>}<button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button>{isOwner && <button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button>}</div>
@@ -1100,7 +1094,7 @@ function monthlyReport(state, ym) {
   const staff = state.users.filter((u) => u.role !== "owner");
   const perEmp = staff.map((u) => {
     const days = state.attendance.filter((a) => a.userId === u.id && inMonth(a.date, ym));
-    return { user: u, hadir: days.length, bolosLive: days.filter((a) => !liveDays.has(a.date)).length, extra: state.extras.filter((x) => x.userId === u.id && inMonth(x.date, ym)).reduce((a, x) => a + x.amount, 0) };
+    return { user: u, hadir: days.length, bolosLive: days.filter((a) => !liveDays.has(a.date)).length, extra: totalExtraFor(state, u, ym) };
   });
   return { sold, total: sold.length, revenue, profit, groups, perEmp };
 }
