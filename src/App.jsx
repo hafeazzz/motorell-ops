@@ -122,7 +122,7 @@ function normalize(s) {
     chat: arr(s.chat, []),
   };
   out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u }));
-  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
+  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", ...m }));
   return out;
 }
@@ -783,7 +783,7 @@ function UangTab({ state, me, update }) {
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-start justify-between" onClick={() => setDetail(u.id)}>
-              <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p></div>
+              <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.odometer ? ` · ${(+u.odometer).toLocaleString("id-ID")} km` : ""}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p></div>
               <Tag color={u.status === "terjual" ? "emerald" : u.status === "siap" ? "blue" : "amber"}>{u.status === "terjual" ? "Terjual" : u.status === "siap" ? "Siap jual" : "Proses"}</Tag>
             </div>
             <div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} accent="#f97316" /><Read label="Total modal" value={rp(modal)} /></div>
@@ -800,16 +800,27 @@ function UangTab({ state, me, update }) {
 }
 const Read = ({ label, value, accent }) => <div className="s-soft rounded-xl py-2 px-3 text-center"><p className="text-[10px] s-muted mb-0.5">{label}</p><p className="text-sm font-bold break-words leading-tight" style={accent ? { color: accent } : {}}>{value}</p></div>;
 
+// Input tanggal terkontrol + tombol "kosongkan" yang andal (nggak bergantung tombol Reset bawaan iOS).
+function DateBox({ label, value, onChange }) {
+  return (
+    <Field label={label}>
+      <div className="relative">
+        <input type="date" className={inputCls + " pr-9"} value={value || ""} onChange={(e) => onChange(e.target.value)} />
+        {value ? <button type="button" onClick={() => onChange("")} title="Kosongkan tanggal" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md s-soft s-muted active:scale-90"><X size={13} /></button> : null}
+      </div>
+    </Field>
+  );
+}
 function AddUnitModal({ open, onClose, update }) {
-  const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today() });
-  const save = () => { if (!f.name) return; update((s) => { s.units.push({ id: uid(), name: f.name, plate: f.plate, buyPrice: +f.buyPrice || 0, sellPrice: +f.sellPrice || 0, status: "proses", investorCode: f.investorCode.trim(), inDate: f.inDate || today(), soldAt: null }); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today() }); onClose(); };
+  const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" });
+  const save = () => { if (!f.name) return; update((s) => { s.units.push({ id: uid(), name: f.name, plate: f.plate, buyPrice: +f.buyPrice || 0, sellPrice: +f.sellPrice || 0, status: "proses", investorCode: f.investorCode.trim(), inDate: f.inDate || today(), soldAt: null, odometer: +f.odometer || 0 }); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" }); onClose(); };
   return (
     <Modal open={open} onClose={onClose} title="Tambah unit motor">
       <Field label="Nama / tipe motor"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Honda Beat 2019" /></Field>
       <Field label="Plat nomor"><input className={inputCls} value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="B 1234 XYZ" /></Field>
-      <Field label="Tanggal masuk"><input type="date" className={inputCls} value={f.inDate} onChange={(e) => setF({ ...f, inDate: e.target.value })} /></Field>
+      <DateBox label="Tanggal masuk" value={f.inDate} onChange={(v) => setF({ ...f, inDate: v })} />
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
-      <Field label="Kode investor (opsional)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA (uang investor siapa)" /></Field>
+      <div className="grid grid-cols-2 gap-2"><Field label="Kode investor (opsional)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} value={f.odometer} onChange={(e) => setF({ ...f, odometer: e.target.value })} placeholder="cth: 5000" /></Field></div>
       <Btn onClick={save} className="w-full mt-2">Simpan unit</Btn>
     </Modal>
   );
@@ -861,8 +872,8 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
       <Field label="Nama motor"><input className={inputCls} defaultValue={unit.name} onBlur={(e) => setField("name", e.target.value)} /></Field>
       <Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
-      <div className="grid grid-cols-2 gap-2"><Field label="Tanggal masuk"><input type="date" className={inputCls} defaultValue={unit.inDate || ""} onBlur={(e) => setField("inDate", e.target.value)} /></Field><Field label="Tanggal keluar (terjual)"><input type="date" className={inputCls} defaultValue={unit.soldAt || ""} onBlur={(e) => setField("soldAt", e.target.value || null)} /></Field></div>
-      <Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field>
+      <div className="grid grid-cols-2 gap-2"><DateBox label="Tanggal masuk" value={unit.inDate} onChange={(v) => setField("inDate", v)} /><DateBox label="Tanggal keluar (terjual)" value={unit.soldAt} onChange={(v) => setField("soldAt", v || null)} /></div>
+      <div className="grid grid-cols-2 gap-2"><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} defaultValue={unit.odometer || ""} onBlur={(e) => setField("odometer", +e.target.value || 0)} placeholder="cth: 5000" /></Field></div>
       <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{l}</button>)}</div></div>
       {Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
       <p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
@@ -1114,8 +1125,8 @@ function LaporanTab({ state }) {
     const wb = X.utils.book_new();
     const sum = [["Laporan Motorell", monthLabel(ym)], [], ["Unit terjual", r.total], ["Total omzet (Rp)", r.revenue], ["Total profit (Rp)", r.profit]];
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), "Ringkasan");
-    const unitRows = [["Nama", "Plat", "Modal beli", "Pengeluaran", "Harga jual", "Profit", "Tgl masuk", "Tgl keluar"]];
-    r.sold.forEach((u) => { const e = expFor(u.id); unitRows.push([u.name, u.plate || "", u.buyPrice, e, u.sellPrice || 0, (u.sellPrice || 0) - u.buyPrice - e, u.inDate || "", u.soldAt || ""]); });
+    const unitRows = [["Nama", "Plat", "Odometer (km)", "Modal beli", "Pengeluaran", "Harga jual", "Profit", "Tgl masuk", "Tgl keluar"]];
+    r.sold.forEach((u) => { const e = expFor(u.id); unitRows.push([u.name, u.plate || "", u.odometer || 0, u.buyPrice, e, u.sellPrice || 0, (u.sellPrice || 0) - u.buyPrice - e, u.inDate || "", u.soldAt || ""]); });
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(unitRows), "Unit Terjual");
     const empRows = [["Nama", "Posisi", "Hari hadir", "Hari tanpa live", "Extra cash (Rp)"]];
     r.perEmp.forEach((p) => empRows.push([p.user.name, p.user.position, p.hadir, p.bolosLive, p.extra]));
