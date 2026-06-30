@@ -800,13 +800,15 @@ function UangTab({ state, me, update }) {
 }
 const Read = ({ label, value, accent }) => <div className="s-soft rounded-xl py-2 px-3 text-center"><p className="text-[10px] s-muted mb-0.5">{label}</p><p className="text-sm font-bold break-words leading-tight" style={accent ? { color: accent } : {}}>{value}</p></div>;
 
-// Input tanggal terkontrol + tombol "kosongkan" yang andal (nggak bergantung tombol Reset bawaan iOS).
+// Tampilan tanggal rapi (rata kiri) dengan input native transparan di atasnya untuk buka picker; plus tombol kosongkan yang andal.
 function DateBox({ label, value, onChange }) {
+  const fmt = value ? new Date(value + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "";
   return (
     <Field label={label}>
       <div className="relative">
-        <input type="date" className={inputCls + " pr-9"} value={value || ""} onChange={(e) => onChange(e.target.value)} />
-        {value ? <button type="button" onClick={() => onChange("")} title="Kosongkan tanggal" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md s-soft s-muted active:scale-90"><X size={13} /></button> : null}
+        <div className={inputCls + " flex items-center pr-9 min-h-[42px]"}>{value ? <span>{fmt}</span> : <span className="s-muted">Pilih tanggal</span>}</div>
+        <input type="date" value={value || ""} onChange={(e) => onChange(e.target.value)} onClick={(e) => { try { e.currentTarget.showPicker && e.currentTarget.showPicker(); } catch (err) {} }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+        {value ? <button type="button" onClick={() => onChange("")} title="Kosongkan tanggal" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md s-soft s-muted active:scale-90 z-10"><X size={13} /></button> : null}
       </div>
     </Field>
   );
