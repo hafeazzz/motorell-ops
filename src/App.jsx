@@ -277,7 +277,27 @@ function PhotoInput({ value, onChange, label = "Ambil / pilih foto", gallery }) 
 }
 
 /* ============ App ============ */
-export default function MotorellOps() {
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err, info) { try { console.error("Motorell crash:", err, info); } catch (e) {} }
+  render() {
+    if (this.state.err) return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#020617", color: "#e2e8f0", fontFamily: "system-ui, sans-serif" }}>
+        <div style={{ maxWidth: 360, textAlign: "center" }}>
+          <p style={{ fontSize: 40, marginBottom: 8 }}>🛠️</p>
+          <p style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Ada error kecil</p>
+          <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>Coba muat ulang halaman. Kalau tetap error, screenshot pesan di bawah buat dikirim ke Fathir.</p>
+          <p style={{ fontSize: 11, color: "#64748b", background: "#0f172a", padding: 10, borderRadius: 10, marginBottom: 14, wordBreak: "break-word" }}>{String((this.state.err && (this.state.err.message || this.state.err)) || "Unknown error")}</p>
+          <button onClick={() => { try { location.reload(); } catch (e) { this.setState({ err: null }); } }} style={{ background: "#f97316", color: "#fff", border: 0, borderRadius: 12, padding: "10px 22px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Muat ulang</button>
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+export default function App() { return <ErrorBoundary><MotorellOps /></ErrorBoundary>; }
+function MotorellOps() {
   const [state, setState] = useState(null);
   const [me, setMe] = useState(null);
   const [tab, setTab] = useState("home");
@@ -289,6 +309,7 @@ export default function MotorellOps() {
   const logoTaps = useRef(0); const logoTimer = useRef(null);
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
   const [notifPerm, setNotifPerm] = useState(notifOK() ? Notification.permission : "unsupported");
+  const [chatTick, setChatTick] = useState(0);
   const askNotif = () => { if (!notifOK()) return; try { Notification.requestPermission().then((p) => setNotifPerm(p)).catch(() => {}); } catch (e) {} };
   const stateRef = useRef(state); stateRef.current = state;
   const chatOpenRef = useRef(chatOpen); chatOpenRef.current = chatOpen;
@@ -317,7 +338,8 @@ export default function MotorellOps() {
       } catch (e) {}
     };
     check();
-    const unsub = window.storage.chatSubscribe(() => check());
+    const onChange = () => { if (!alive) return; setChatTick((t) => t + 1); check(); };
+    const unsub = window.storage.chatSubscribe(onChange);
     return () => { alive = false; if (unsub) unsub(); };
   }, [me && me.id]);
 
@@ -425,7 +447,7 @@ button{transition:transform .12s ease}
         })}
       </nav>
 
-      <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} />
+      <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} chatTick={chatTick} />
       <FunFX />
 
       <ProfileModal open={profile} me={me} state={state} onClose={() => setProfile(false)} update={update} setMe={setMe} dark={dark} toggleDark={toggleDark} onLogout={() => { setProfile(false); setMe(null); setTab("home"); }} />
@@ -1249,7 +1271,7 @@ function LaporanTab({ state }) {
 }
 
 /* ============ Group Chat ============ */
-function ChatPage({ open, onClose, state, me, update }) {
+function ChatPage({ open, onClose, state, me, update, chatTick }) {
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState("");
   const [zoom, setZoom] = useState("");
@@ -1261,9 +1283,7 @@ function ChatPage({ open, onClose, state, me, update }) {
     if (!open) return;
     load();
     if (window.storage.chatPrune) window.storage.chatPrune(300);
-    const unsub = window.storage.chatSubscribe ? window.storage.chatSubscribe(() => load()) : null;
-    return () => { if (unsub) unsub(); };
-  }, [open]);
+  }, [open, chatTick]);
   useEffect(() => { if (open) setTimeout(() => endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }), 60); }, [open, msgs.length]);
   if (!open) return null;
   const user = (id) => state.users.find((u) => u.id === id);
