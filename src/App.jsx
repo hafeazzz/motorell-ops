@@ -5,7 +5,7 @@ import {
   TrendingDown, Wrench, Fuel, Package, Hand, Receipt, Circle,
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
-  MessageCircle, Send, Volume2, VolumeX, Download, Search
+  MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -80,6 +80,14 @@ const soldUnitCount = (s, ym) => (s.units || []).filter((u) => u.status === "ter
 const saleBonusFor = (s, u, ym) => (u && u.saleBonus ? soldUnitCount(s, ym) * SALE_BONUS : 0);
 const manualExtras = (s, userId, ym) => (s.extras || []).filter((x) => x.userId === userId && !x.auto && (!ym || inMonth(x.date, ym)));
 const totalExtraFor = (s, u, ym) => saleBonusFor(s, u, ym) + manualExtras(s, u.id, ym).reduce((a, x) => a + x.amount, 0);
+const notifOK = () => typeof window !== "undefined" && "Notification" in window;
+function notify(title, body, tag) {
+  try {
+    if (!notifOK() || Notification.permission !== "granted") return;
+    const n = new Notification(title, { body: body || "", tag: tag || undefined, icon: "/icon.png", badge: "/icon.png", renotify: true });
+    n.onclick = () => { try { window.focus(); } catch (e) {} try { n.close(); } catch (e) {} };
+  } catch (e) {}
+}
 const CATS = {
   service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
   jasa: { label: "Jasa", icon: Hand, color: "#a855f7", ph: "cth: ongkos pasang, jasa bengkel…" },
@@ -128,7 +136,7 @@ function normalize(s) {
   };
   out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
   out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
-  out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", ...m }));
+  out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
   return out;
 }
@@ -280,6 +288,38 @@ export default function MotorellOps() {
   const touch = useRef({ x: 0, y: 0 });
   const logoTaps = useRef(0); const logoTimer = useRef(null);
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
+  const [notifPerm, setNotifPerm] = useState(notifOK() ? Notification.permission : "unsupported");
+  const askNotif = () => { if (!notifOK()) return; try { Notification.requestPermission().then((p) => setNotifPerm(p)).catch(() => {}); } catch (e) {} };
+  const stateRef = useRef(state); stateRef.current = state;
+  const chatOpenRef = useRef(chatOpen); chatOpenRef.current = chatOpen;
+  const seenTasks = useRef(null); const seenMe = useRef(null); const seenChat = useRef(null);
+  useEffect(() => {
+    if (!state || !me) return;
+    if (seenMe.current !== me.id) { seenMe.current = me.id; seenTasks.current = new Set(state.tasks.filter((t) => t.userId === me.id).map((t) => t.id)); return; }
+    state.tasks.filter((t) => t.userId === me.id && !t.done && !seenTasks.current.has(t.id)).forEach((t) => notify("Task baru dari owner", t.title, "task-" + t.id));
+    state.tasks.forEach((t) => { if (t.userId === me.id) seenTasks.current.add(t.id); });
+  }, [state, me]);
+  useEffect(() => {
+    if (!me || !window.storage || !window.storage.chatSubscribe) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const list = await window.storage.chatList(); if (!alive || !list.length) return;
+        const newest = list[list.length - 1];
+        if (seenChat.current === null) { seenChat.current = newest.id; return; }
+        if (newest.id !== seenChat.current) {
+          if (newest.by !== me.id && !chatOpenRef.current) {
+            const su = stateRef.current && stateRef.current.users.find((u) => u.id === newest.by);
+            notify((su && su.name) || "Pesan baru", newest.msg || (newest.photo ? "📷 Mengirim foto" : ""), "chat");
+          }
+          seenChat.current = newest.id;
+        }
+      } catch (e) {}
+    };
+    check();
+    const unsub = window.storage.chatSubscribe(() => check());
+    return () => { alive = false; if (unsub) unsub(); };
+  }, [me && me.id]);
 
   useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); const c3 = fixSaleBonus(next); if (changed || c2 || c3) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
@@ -354,6 +394,13 @@ button{transition:transform .12s ease}
       </Fade>
 
       <main className="px-4 -mt-3 overflow-hidden" onTouchStart={onTStart} onTouchEnd={onTEnd}>
+        {notifPerm === "default" && (
+          <div className="pt-3"><Card className="p-3 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: "#f9731622" }}><Bell size={18} className="text-orange-500" /></div>
+            <div className="flex-1 min-w-0"><p className="text-sm font-semibold leading-tight">Aktifkan notifikasi</p><p className="text-[11px] s-muted leading-tight mt-0.5">Biar dapat pemberitahuan task baru & chat masuk.</p></div>
+            <Btn onClick={askNotif} className="!px-3 !py-2 shrink-0 text-xs">Aktifkan</Btn>
+          </Card></div>
+        )}
         <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
           {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} />}
           {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
@@ -622,7 +669,6 @@ function HomeTab({ state, me, isOwner, go }) {
   const g = greeting();
   const proses = state.units.filter((u) => u.status === "proses").length;
   const monthSold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).length;
-  const totalExp = state.expenses.reduce((a, e) => a + e.amount, 0);
   const sold = state.units.filter((u) => u.status === "terjual");
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
   const stokAktif = state.units.filter((u) => u.status !== "terjual").length;
@@ -639,11 +685,10 @@ function HomeTab({ state, me, isOwner, go }) {
 
       <Fade delay={120}>
         {isOwner ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Stat label="Stok Aktif" value={stokAktif} sub={`${monthSold} terjual bln ini`} icon={Bike} color="#f97316" />
-            <Stat label="Hadir Hari Ini" value={todayAbsen.length} sub={`dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
-            <Stat label="Total Pengeluaran" value={rp(totalExp)} small icon={Wallet} color="#a855f7" />
-            <Stat label="Profit Bln Ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" />
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <Stat label="Stok aktif" value={stokAktif} sub={`Terjual bulan ini: ${monthSold}`} icon={Bike} color="#f97316" />
+            <Stat label="Hadir hari ini" value={todayAbsen.length} sub={`Dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
+            <Stat label="Profit bulan ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" />
           </div>
         ) : (
           <div className="space-y-3">
@@ -906,7 +951,7 @@ function MediaTab({ state, me, isOwner, isMgr, update }) {
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
   const submit = () => { if (!link) return; update((s) => { s.media.unshift({ id: uid(), by: me.id, link, note, category: cat, verified: false, date: today() }); return s; }); setLink(""); setNote(""); setCat("ADS"); };
   const verify = (id) => update((s) => { s.media.find((m) => m.id === id).verified = true; return s; });
-  const list = isMgr ? state.media : state.media.filter((m) => m.by === me.id);
+  const list = (isMgr ? state.media : state.media.filter((m) => m.by === me.id)).filter((m) => inMonth(m.date, month()));
   return (
     <div className="space-y-3 pt-3">
       {!isOwner && <Card className="p-4"><p className="font-bold mb-3">Upload konten</p><input className={`${inputCls} mb-2`} placeholder="Link konten (TikTok/IG/YouTube)…" value={link} onChange={(e) => setLink(e.target.value)} /><input className={`${inputCls} mb-2`} placeholder="Judul / keterangan konten" value={note} onChange={(e) => setNote(e.target.value)} /><p className="text-xs font-semibold s-muted mb-1.5">Kategori konten</p><CatChips value={cat} onChange={setCat} /><Btn onClick={submit} className="w-full mt-3"><LinkIcon size={15} className="inline mr-1.5 -mt-0.5" />Kirim untuk verifikasi</Btn></Card>}
@@ -1058,14 +1103,12 @@ function OwnerTaskEditModal({ task, onClose, update }) {
 
 /* ============ Tim ============ */
 function TimTab({ state, update, isOwner }) {
-  const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null); const [editingExtra, setEditingExtra] = useState(null);
-  const [f, setF] = useState({ name: "", position: "Mekanik" }); const [taskTitle, setTaskTitle] = useState(""); const [extra, setExtra] = useState({ amount: "", note: "" });
-  const openGive = (uid2) => { setEditingExtra(null); setExtra({ amount: "", note: "" }); setExtraTo(uid2); };
-  const openEditExtra = (ex) => { setExtra({ amount: String(ex.amount), note: ex.note || "" }); setEditingExtra(ex); setExtraTo(ex.userId); };
-  const delExtra = (id) => { if (window.confirm("Hapus extra cash ini?")) update((s) => { s.extras = s.extras.filter((e) => e.id !== id); return s; }); };
+  const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null);
+  const [f, setF] = useState({ name: "", position: "Mekanik" }); const [taskTitle, setTaskTitle] = useState(""); const [extraVal, setExtraVal] = useState("");
+  const openExtra = (u) => { setExtraVal(String(totalExtraFor(state, u, month()))); setExtraTo(u.id); };
+  const saveExtra = () => { const id2 = extraTo; const target = Math.round(+extraVal || 0); update((s) => { const usr = s.users.find((x) => x.id === id2); const auto = saleBonusFor(s, usr, month()); const adj = target - auto; s.extras = s.extras.filter((e) => !(e.userId === id2 && !e.auto && inMonth(e.date, month()))); if (adj !== 0) s.extras.push({ id: uid(), userId: id2, amount: adj, note: "Penyesuaian owner", by: "u_own", date: today() }); return s; }); setExtraTo(null); };
   const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
   const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
-  const giveExtra = () => { if (!extra.amount) return; update((s) => { if (editingExtra) { const e = s.extras.find((x) => x.id === editingExtra.id); if (e) { e.amount = +extra.amount; e.note = extra.note; } } else { s.extras.push({ id: uid(), userId: extraTo, amount: +extra.amount, note: extra.note, by: "u_own", date: today() }); } return s; }); setExtra({ amount: "", note: "" }); setExtraTo(null); setEditingExtra(null); };
   const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false, role: "staff" });
   const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus, role: u.role }); setEditU(u); };
   const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; u.role = ef.role; } return s; }); setEditU(null); };
@@ -1076,22 +1119,20 @@ function TimTab({ state, update, isOwner }) {
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim</p>{isOwner && <Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn>}</div>
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{state.users.filter((u) => u.role !== "owner").map((u) => {
         const tasks = state.tasks.filter((t) => t.userId === u.id); const done = tasks.filter((t) => t.done).length;
-        const manualSum = manualExtras(state, u.id).reduce((a, x) => a + x.amount, 0);
-        const soldN = state.units.filter((x) => x.status === "terjual" && inMonth(x.soldAt, month())).length;
+        const total = totalExtraFor(state, u, month());
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}{u.role === "admin" && <span className="ml-1.5"><Tag color="blue">Admin</Tag></span>}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
-            {u.saleBonus && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Bonus penjualan bulan ini: {soldN} unit = {rp(soldN * SALE_BONUS)}</p>}
-            {isOwner ? manualExtras(state, u.id).map((ex) => (<div key={ex.id} className="flex items-center justify-between text-[11px] mb-1.5"><span className="s-muted flex items-center gap-1"><Gift size={11} className="text-orange-500" />{ex.note || "Extra cash"}: <b className="text-orange-500">{rp(ex.amount)}</b></span><span className="flex gap-2 shrink-0"><button onClick={() => openEditExtra(ex)} className="s-muted"><Pencil size={12} /></button><button onClick={() => delExtra(ex.id)} className="text-rose-400"><Trash2 size={12} /></button></span></div>)) : (manualSum > 0 && <p className="text-[11px] text-orange-500 font-semibold mb-1.5 flex items-center gap-1"><Gift size={12} />Extra cash lain: {rp(manualSum)}</p>)}
+            {(u.saleBonus || total !== 0) && <p className={`text-[11px] font-semibold mb-1.5 flex items-center gap-1 ${total < 0 ? "text-rose-500" : "text-orange-500"}`}><Gift size={12} />Extra cash bulan ini: {rp(total)}</p>}
             <div className="space-y-1 mb-2">{tasks.filter((t) => !t.done).length === 0 && <p className="text-[11px] s-muted">Tidak ada task aktif.</p>}{tasks.filter((t) => !t.done).map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted"><Circle size={13} /><span>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
-            {isOwner && <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => openGive(u.id)}><Gift size={14} className="inline mr-1 -mt-0.5" />Extra cash</Btn></div>}
+            {isOwner && <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => openExtra(u)}><Gift size={14} className="inline mr-1 -mt-0.5" />Atur extra cash</Btn></div>}
             <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border">{isOwner && <button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button>}<button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button>{isOwner && <button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button>}</div>
           </Card>
         );
       })}</div>
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
-      <Modal open={!!extraTo} onClose={() => { setExtraTo(null); setEditingExtra(null); }} title={editingExtra ? "Edit extra cash" : "Kasih extra cash (bonus)"}><Field label="Nominal (Rp)"><input type="number" className={inputCls} value={extra.amount} onChange={(e) => setExtra({ ...extra, amount: e.target.value })} placeholder="200000" /></Field><Field label="Keterangan (opsional)"><input className={inputCls} value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} placeholder="Bonus closing NMAX" /></Field><Btn onClick={giveExtra} className="w-full mt-2">{editingExtra ? "Simpan perubahan" : "Beri bonus"}</Btn></Modal>
+      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Atur extra cash">{extraTo && (() => { const u2 = state.users.find((x) => x.id === extraTo); const auto = saleBonusFor(state, u2, month()); const soldN = state.units.filter((x) => x.status === "terjual" && inMonth(x.soldAt, month())).length; return (<><p className="text-sm font-semibold mb-1">{u2 && u2.name}</p>{u2 && u2.saleBonus && <p className="text-[11px] s-muted mb-2 leading-relaxed">Bonus otomatis bulan ini: <b className="text-orange-500">{rp(auto)}</b> ({soldN} motor terjual × Rp200rb). Set total di bawah kalau mau nambah bonus atau motong (mis. penalti).</p>}<Field label="Total extra cash bulan ini (Rp)"><input type="number" className={inputCls} value={extraVal} onChange={(e) => setExtraVal(e.target.value)} placeholder="300000" /></Field><Btn onClick={saveExtra} className="w-full mt-2">Simpan</Btn></>); })()}</Modal>
       <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
