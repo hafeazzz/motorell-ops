@@ -84,9 +84,34 @@ const notifOK = () => typeof window !== "undefined" && "Notification" in window;
 function notify(title, body, tag) {
   try {
     if (!notifOK() || Notification.permission !== "granted") return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return; // pas app disembunyikan/ditutup, biar push (service worker) yg jalan → cegah notif dobel
     const n = new Notification(title, { body: body || "", tag: tag || undefined, icon: "/icon.png", badge: "/icon.png", renotify: true });
     n.onclick = () => { try { window.focus(); } catch (e) {} try { n.close(); } catch (e) {} };
   } catch (e) {}
+}
+/* ===== Web Push (notif walau app tertutup total) =====
+   Isi VAPID_PUBLIC dgn kunci PUBLIK dari langkah setup. Kalau kosong, push mati & app tetap jalan (cuma notif in-app). */
+const VAPID_PUBLIC = "BDdyxYQ6Y8hVX0ZdrMZk4P6fgqH0n6FfT501RNJjvJxdMPRoZqNjkkO1ZHkHn2aFpwICxAunybpNZ8-gI5e0m0c";
+const pushOK = () => typeof navigator !== "undefined" && "serviceWorker" in navigator && typeof window !== "undefined" && "PushManager" in window && !!VAPID_PUBLIC;
+function urlB64ToUint8(base64) {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64); const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+async function enablePush(userId) {
+  try {
+    if (!pushOK() || !userId) return;
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC) });
+    if (sub && window.storage && window.storage.savePushSub) await window.storage.savePushSub(userId, sub.toJSON());
+  } catch (e) { console.error("enablePush error:", e); }
+}
+function pushTo(userIds, title, body) {
+  try { if (window.storage && window.storage.sendPush && userIds && userIds.length) window.storage.sendPush(userIds, title, body); } catch (e) {}
 }
 const CATS = {
   service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
@@ -310,7 +335,7 @@ function MotorellOps() {
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
   const [notifPerm, setNotifPerm] = useState(notifOK() ? Notification.permission : "unsupported");
   const [chatTick, setChatTick] = useState(0);
-  const askNotif = () => { if (!notifOK()) return; try { Notification.requestPermission().then((p) => setNotifPerm(p)).catch(() => {}); } catch (e) {} };
+  const askNotif = () => { if (!notifOK()) return; try { Notification.requestPermission().then((p) => { setNotifPerm(p); if (p === "granted" && me) enablePush(me.id); }).catch(() => {}); } catch (e) {} };
   const stateRef = useRef(state); stateRef.current = state;
   const chatOpenRef = useRef(chatOpen); chatOpenRef.current = chatOpen;
   const seenTasks = useRef(null); const seenMe = useRef(null); const seenChat = useRef(null);
@@ -343,6 +368,10 @@ function MotorellOps() {
     return () => { alive = false; if (unsub) unsub(); };
   }, [me && me.id]);
 
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if (me && notifOK() && Notification.permission === "granted") enablePush(me.id);
+  }, [me && me.id]);
   useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); const c3 = fixSaleBonus(next); if (changed || c2 || c3) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
     if (!window.storage || !window.storage.subscribe) return;
@@ -417,7 +446,7 @@ button{transition:transform .12s ease}
 
       <main className="px-4 -mt-3 overflow-hidden" onTouchStart={onTStart} onTouchEnd={onTEnd}>
         {notifPerm === "default" && (
-          <div className="pt-3"><Card className="p-3 flex items-center gap-3">
+          <div className="pt-6 pb-1"><Card className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: "#f9731622" }}><Bell size={18} className="text-orange-500" /></div>
             <div className="flex-1 min-w-0"><p className="text-sm font-semibold leading-tight">Aktifkan notifikasi</p><p className="text-[11px] s-muted leading-tight mt-0.5">Biar dapat pemberitahuan task baru & chat masuk.</p></div>
             <Btn onClick={askNotif} className="!px-3 !py-2 shrink-0 text-xs">Aktifkan</Btn>
@@ -1130,7 +1159,7 @@ function TimTab({ state, update, isOwner }) {
   const openExtra = (u) => { setExtraVal(String(totalExtraFor(state, u, month()))); setExtraTo(u.id); };
   const saveExtra = () => { const id2 = extraTo; const target = Math.round(+extraVal || 0); update((s) => { const usr = s.users.find((x) => x.id === id2); const auto = saleBonusFor(s, usr, month()); const adj = target - auto; s.extras = s.extras.filter((e) => !(e.userId === id2 && !e.auto && inMonth(e.date, month()))); if (adj !== 0) s.extras.push({ id: uid(), userId: id2, amount: adj, note: "Penyesuaian owner", by: "u_own", date: today() }); return s; }); setExtraTo(null); };
   const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
-  const assign = () => { if (!taskTitle) return; update((s) => { s.tasks.push({ id: uid(), userId: assignTo, title: taskTitle, done: false, setBy: "owner", date: today() }); return s; }); setTaskTitle(""); setAssignTo(null); };
+  const assign = () => { if (!taskTitle) return; const tt = taskTitle, uidTo = assignTo; update((s) => { s.tasks.push({ id: uid(), userId: uidTo, title: tt, done: false, setBy: "owner", date: today() }); return s; }); pushTo([uidTo], "Task baru dari owner", tt); setTaskTitle(""); setAssignTo(null); };
   const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false, role: "staff" });
   const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus, role: u.role }); setEditU(u); };
   const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; u.role = ef.role; } return s; }); setEditU(null); };
@@ -1293,6 +1322,7 @@ function ChatPage({ open, onClose, state, me, update, chatTick }) {
     setText(""); setPhoto("");
     setMsgs((prev) => [...prev, m]);
     await window.storage.chatSend(m);
+    pushTo(state.users.filter((u) => u.id !== me.id).map((u) => u.id), me.name || "Pesan baru", m.msg || (m.photo ? "📷 Mengirim foto" : ""));
     load();
   };
   const del = async (id) => {

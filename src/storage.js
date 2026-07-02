@@ -162,6 +162,26 @@ storage.chatSubscribe = (cb) => {
   return () => { try { supabase.removeChannel(channel); } catch (e) {} };
 };
 
+/* ===== Web Push: simpan subscription & kirim push lewat Edge Function ===== */
+storage.savePushSub = async (userId, sub) => {
+  try {
+    const endpoint = sub && sub.endpoint;
+    if (!endpoint) return false;
+    const { error } = await supabase.from("push_subs").upsert({ endpoint, user_id: userId, sub, updated: Date.now() }, { onConflict: "endpoint" });
+    if (error) throw error;
+    return true;
+  } catch (e) { console.error("savePushSub error:", e); return false; }
+};
+storage.deletePushSub = async (endpoint) => {
+  try { if (endpoint) await supabase.from("push_subs").delete().eq("endpoint", endpoint); } catch (e) { console.error("deletePushSub error:", e); }
+};
+storage.sendPush = async (toUserIds, title, body, url) => {
+  try {
+    if (!toUserIds || !toUserIds.length) return;
+    await supabase.functions.invoke("send-push", { body: { toUserIds, title, body: body || "", url: url || "/" } });
+  } catch (e) { console.error("sendPush error:", e); }
+};
+
 if (typeof window !== "undefined") {
   window.storage = storage;
 }
