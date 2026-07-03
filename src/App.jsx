@@ -1199,12 +1199,15 @@ function monthlyReport(state, ym) {
   sold.forEach((u) => { byName[u.name] = byName[u.name] || { count: 0, profit: 0, revenue: 0 }; byName[u.name].count++; byName[u.name].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].revenue += (u.sellPrice || 0); });
   const groups = Object.entries(byName).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
   const liveDays = new Set(state.lives.filter((l) => inMonth(l.date, ym)).map((l) => l.date));
+  const activeDays = new Set(state.attendance.filter((a) => inMonth(a.date, ym)).map((a) => a.date));
+  const teamLive = [...activeDays].filter((d) => liveDays.has(d)).length;
+  const teamBolos = [...activeDays].filter((d) => !liveDays.has(d)).length;
   const staff = state.users.filter((u) => u.role !== "owner");
   const perEmp = staff.map((u) => {
     const days = state.attendance.filter((a) => a.userId === u.id && inMonth(a.date, ym));
-    return { user: u, hadir: days.length, bolosLive: days.filter((a) => !liveDays.has(a.date)).length, extra: totalExtraFor(state, u, ym) };
+    return { user: u, hadir: days.length, extra: totalExtraFor(state, u, ym) };
   });
-  return { sold, total: sold.length, revenue, profit, groups, perEmp };
+  return { sold, total: sold.length, revenue, profit, groups, perEmp, teamLive, teamBolos };
 }
 function ensureXLSX() {
   return new Promise((resolve, reject) => {
@@ -1227,13 +1230,13 @@ function LaporanTab({ state }) {
     try { X = await ensureXLSX(); } catch (e) { alert("Gagal memuat library Excel. Cek koneksi internet lalu coba lagi."); return; }
     const expFor = (id) => state.expenses.filter((e) => e.unitId === id).reduce((a, e) => a + e.amount, 0);
     const wb = X.utils.book_new();
-    const sum = [["Laporan Motorell", monthLabel(ym)], [], ["Unit terjual", r.total], ["Total omzet (Rp)", r.revenue], ["Total profit (Rp)", r.profit]];
+    const sum = [["Laporan Motorell", monthLabel(ym)], [], ["Unit terjual", r.total], ["Total omzet (Rp)", r.revenue], ["Total profit (Rp)", r.profit], [], ["Hari tim live", r.teamLive], ["Hari bolos live (tim)", r.teamBolos]];
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), "Ringkasan");
     const unitRows = [["Nama", "Plat", "Odometer (km)", "Modal beli", "Pengeluaran", "Harga jual", "Profit", "Tgl masuk", "Tgl keluar"]];
     r.sold.forEach((u) => { const e = expFor(u.id); unitRows.push([u.name, u.plate || "", u.odometer || 0, u.buyPrice, e, u.sellPrice || 0, (u.sellPrice || 0) - u.buyPrice - e, u.inDate || "", u.soldAt || ""]); });
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(unitRows), "Unit Terjual");
-    const empRows = [["Nama", "Posisi", "Hari hadir", "Hari tanpa live", "Extra cash (Rp)"]];
-    r.perEmp.forEach((p) => empRows.push([p.user.name, p.user.position, p.hadir, p.bolosLive, p.extra]));
+    const empRows = [["Nama", "Posisi", "Hari hadir", "Extra cash (Rp)"]];
+    r.perEmp.forEach((p) => empRows.push([p.user.name, p.user.position, p.hadir, p.extra]));
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(empRows), "Per Karyawan");
     X.writeFile(wb, `Laporan-Motorell-${ym}.xlsx`);
   };
@@ -1282,18 +1285,21 @@ function LaporanTab({ state }) {
 
       <Card className="p-4">
         <p className="font-bold text-sm mb-3">Rekap pegawai</p>
-        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 gap-y-2 text-xs">
-          <span className="s-muted font-semibold">Pegawai</span><span className="s-muted font-semibold text-center">Hadir</span><span className="s-muted font-semibold text-center">Bolos live</span><span className="s-muted font-semibold text-right">Extra</span>
-          {r.perEmp.map(({ user, hadir, bolosLive, extra }) => (
+        <div className="mb-3 p-3 rounded-xl flex items-center gap-3" style={{ background: "#f43f5e14" }}>
+          <div className="w-9 h-9 rounded-lg grid place-items-center shrink-0" style={{ background: "#f43f5e22" }}><Video size={16} className="text-rose-500" /></div>
+          <div className="flex-1 text-xs"><p className="font-semibold">Live TikTok tim bulan ini</p><p className="s-muted mt-0.5"><b className="text-rose-500">{r.teamLive}</b> hari live · <b className={r.teamBolos > 0 ? "text-amber-500" : ""}>{r.teamBolos}</b> hari bolos live</p></div>
+        </div>
+        <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-2 text-xs">
+          <span className="s-muted font-semibold">Pegawai</span><span className="s-muted font-semibold text-center">Hadir</span><span className="s-muted font-semibold text-right">Extra</span>
+          {r.perEmp.map(({ user, hadir, extra }) => (
             <React.Fragment key={user.id}>
               <div className="flex items-center gap-1.5"><Avatar user={user} size={22} /><span className="font-medium truncate">{user.name}</span></div>
               <span className="text-center font-bold">{hadir}</span>
-              <span className={`text-center font-bold ${bolosLive > 0 ? "text-rose-500" : ""}`}>{bolosLive}</span>
               <span className="text-right font-bold text-orange-500">{extra ? rp(extra) : "-"}</span>
             </React.Fragment>
           ))}
         </div>
-        <p className="text-[10px] s-muted mt-3">Bolos live = hari dia hadir tapi tim nggak live TikTok. Laporan update otomatis tiap bulan, bisa cek bulan sebelumnya pakai panah di atas.</p>
+        <p className="text-[10px] s-muted mt-3">Bolos live dihitung per tim (bukan per orang) = hari tim hadir tapi nggak live TikTok. Laporan update otomatis tiap bulan, bisa cek bulan sebelumnya pakai panah di atas.</p>
       </Card>
     </div>
   );
