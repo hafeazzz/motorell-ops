@@ -113,6 +113,7 @@ async function enablePush(userId) {
 function pushTo(userIds, title, body) {
   try { if (window.storage && window.storage.sendPush && userIds && userIds.length) window.storage.sendPush(userIds, title, body); } catch (e) {}
 }
+const dayLabel = (ts) => { const d = new Date(ts); const now = new Date(); const strip = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); const diff = Math.round((strip(now) - strip(d)) / 86400000); if (diff === 0) return "Hari ini"; if (diff === 1) return "Kemarin"; return d.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" }); };
 const CATS = {
   service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
   jasa: { label: "Jasa", icon: Hand, color: "#a855f7", ph: "cth: ongkos pasang, jasa bengkel…" },
@@ -1204,7 +1205,7 @@ function OwnerTaskModal({ openFor, staff, onClose, update }) {
   const [userId, setUserId] = useState("");
   const [title, setTitle] = useState("");
   useEffect(() => { if (open) { setUserId(typeof openFor === "string" ? openFor : (staff[0] && staff[0].id) || ""); setTitle(""); } }, [openFor]);
-  const save = () => { if (!title.trim() || !userId) return; update((s) => { s.tasks.push({ id: uid(), userId, title: title.trim(), done: false, setBy: "owner", date: today() }); return s; }); setTitle(""); onClose(); };
+  const save = () => { if (!title.trim() || !userId) return; const tt = title.trim(), uTo = userId; update((s) => { s.tasks.push({ id: uid(), userId: uTo, title: tt, done: false, setBy: "owner", date: today() }); return s; }); pushTo([uTo], "Task baru dari owner", tt); setTitle(""); onClose(); };
   return (
     <Modal open={open} onClose={onClose} title="Tambah task">
       <Field label="Untuk siapa"><select className={inputCls} value={userId} onChange={(e) => setUserId(e.target.value)}>{staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
@@ -1383,30 +1384,45 @@ function ChatPage({ open, onClose, state, me, update, chatTick }) {
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState("");
   const [zoom, setZoom] = useState("");
-  const [msgs, setMsgs] = useState([]);
+  const [serverMsgs, setServerMsgs] = useState([]);
+  const [queue, setQueue] = useState([]); // pesan yang lagi dikirim / gagal (belum terkonfirmasi server)
   const fileRef = useRef(null);
   const endRef = useRef(null);
-  const load = async () => { try { const m = await window.storage.chatList(); setMsgs(m); } catch (e) {} };
+  const load = async () => { try { const m = await window.storage.chatList(); setServerMsgs(m); setQueue((q) => q.filter((x) => !m.some((s) => s.id === x.id))); } catch (e) {} };
   useEffect(() => {
     if (!open) return;
     load();
     if (window.storage.chatPrune) window.storage.chatPrune(300);
+    if (window.storage.chatPruneOld) window.storage.chatPruneOld(7);
   }, [open, chatTick]);
+  const msgs = [...serverMsgs, ...queue].sort((a, b) => a.ts - b.ts);
   useEffect(() => { if (open) setTimeout(() => endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }), 60); }, [open, msgs.length]);
   if (!open) return null;
   const user = (id) => state.users.find((u) => u.id === id);
-  const send = async () => {
+  const deliver = (m) => {
+    (async () => {
+      let ok = false;
+      try { ok = await window.storage.chatSend(m); } catch (e) { ok = false; }
+      if (ok) {
+        pushTo(state.users.filter((u) => u.id !== me.id).map((u) => u.id), me.name || "Pesan baru", m.msg || (m.photo ? "📷 Mengirim foto" : ""));
+        load();
+      } else {
+        setQueue((q) => q.map((x) => (x.id === m.id ? { ...x, _st: "fail" } : x)));
+      }
+    })();
+  };
+  const send = () => {
     if (!text.trim() && !photo) return;
     const m = { id: uid(), ts: Date.now(), by: me.id, msg: text.trim(), photo: photo || "" };
     setText(""); setPhoto("");
-    setMsgs((prev) => [...prev, m]);
-    await window.storage.chatSend(m);
-    pushTo(state.users.filter((u) => u.id !== me.id).map((u) => u.id), me.name || "Pesan baru", m.msg || (m.photo ? "📷 Mengirim foto" : ""));
-    load();
+    setQueue((q) => [...q, { ...m, _st: "send" }]);
+    deliver(m); // tanpa await → langsung bisa ngetik & kirim pesan berikutnya
   };
+  const retry = (id) => { const it = queue.find((x) => x.id === id); if (!it) return; setQueue((q) => q.map((x) => (x.id === id ? { ...x, _st: "send" } : x))); const { _st, ...clean } = it; deliver(clean); };
   const del = async (id) => {
+    if (queue.some((x) => x.id === id)) { setQueue((q) => q.filter((x) => x.id !== id)); return; }
     if (!window.confirm("Hapus pesan ini?")) return;
-    setMsgs((prev) => prev.filter((x) => x.id !== id));
+    setServerMsgs((prev) => prev.filter((x) => x.id !== id));
     await window.storage.chatDelete(id);
     load();
   };
@@ -1420,20 +1436,31 @@ function ChatPage({ open, onClose, state, me, update, chatTick }) {
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
         {msgs.length === 0 && <p className="text-center text-sm s-muted mt-12">Belum ada pesan. Sapa tim kamu! 👋</p>}
-        {msgs.map((m) => {
+        {msgs.map((m, i) => {
           const mine = m.by === me.id; const u = user(m.by);
+          const prev = msgs[i - 1];
+          const newDay = !prev || new Date(prev.ts).toDateString() !== new Date(m.ts).toDateString();
+          const jam = new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
           return (
-            <div key={m.id} className={`flex gap-2 ${mine ? "flex-row-reverse" : ""}`}>
-              {!mine && <Avatar user={u} size={28} />}
-              <div className="max-w-[76%] flex flex-col" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
-                {!mine && <span className="text-[10px] s-muted ml-1 mb-0.5">{u ? u.name : "?"}</span>}
-                <div className={`rounded-2xl px-3 py-2 ${mine ? "bg-orange-500 text-white rounded-br-md" : "s-surface s-text s-border border rounded-bl-md"}`}>
-                  {m.photo && <img src={m.photo} onClick={() => setZoom(m.photo)} className="rounded-xl mb-1 max-h-52 object-cover" alt="" />}
-                  {m.msg && <p className="text-sm whitespace-pre-wrap break-words">{m.msg}</p>}
+            <React.Fragment key={m.id}>
+              {newDay && <div className="flex justify-center py-1"><span className="s-soft s-muted text-[10px] font-semibold px-3 py-1 rounded-full">{dayLabel(m.ts)}</span></div>}
+              <div className={`flex gap-2 ${mine ? "flex-row-reverse" : ""}`}>
+                {!mine && <Avatar user={u} size={28} />}
+                <div className="max-w-[76%] flex flex-col" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
+                  {!mine && <span className="text-[10px] s-muted ml-1 mb-0.5">{u ? u.name : "?"}</span>}
+                  <div className={`rounded-2xl px-3 py-2 ${mine ? "bg-orange-500 text-white rounded-br-md" : "s-surface s-text s-border border rounded-bl-md"} ${m._st ? "opacity-70" : ""}`}>
+                    {m.photo && <img src={m.photo} onClick={() => setZoom(m.photo)} className="rounded-xl mb-1 max-h-52 object-cover" alt="" />}
+                    {m.msg && <p className="text-sm whitespace-pre-wrap break-words">{m.msg}</p>}
+                  </div>
+                  <span className="text-[9px] s-muted mx-1 mt-0.5 flex items-center gap-2">
+                    {m._st === "send" && <span>{jam} · mengirim…</span>}
+                    {m._st === "fail" && <button onClick={() => retry(m.id)} className="text-rose-500 font-bold active:scale-90">Gagal · ketuk buat kirim ulang</button>}
+                    {!m._st && jam}
+                    {(mine || me.role === "owner" || me.role === "admin") && <button onClick={() => del(m.id)} className="text-rose-400 flex items-center gap-0.5 active:scale-90"><Trash2 size={13} />Hapus</button>}
+                  </span>
                 </div>
-                <span className="text-[9px] s-muted mx-1 mt-0.5 flex items-center gap-2">{new Date(m.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}{(mine || me.role === "owner" || me.role === "admin") && <button onClick={() => del(m.id)} className="text-rose-400 flex items-center gap-0.5 active:scale-90"><Trash2 size={13} />Hapus</button>}</span>
               </div>
-            </div>
+            </React.Fragment>
           );
         })}
         <div ref={endRef} />

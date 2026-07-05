@@ -154,6 +154,13 @@ storage.chatPrune = async (keep = 300) => {
     await supabase.from(CHAT_TABLE).delete().lt("ts", data[0].ts);
   } catch (e) { console.error("chatPrune error:", e); }
 };
+// Auto-bersih mingguan: hapus pesan yang lebih tua dari `days` hari.
+storage.chatPruneOld = async (days = 7) => {
+  try {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    await supabase.from(CHAT_TABLE).delete().lt("ts", cutoff);
+  } catch (e) { console.error("chatPruneOld error:", e); }
+};
 storage.chatSubscribe = (cb) => {
   const channel = supabase
     .channel("chat-stream")
