@@ -212,6 +212,43 @@ const Btn = ({ children, onClick, variant = "primary", className = "", disabled 
 const Field = ({ label, children }) => <label className="block mb-3"><span className="text-xs font-semibold s-muted mb-1 block">{label}</span>{children}</label>;
 const inputCls = "s-input w-full px-3 py-2.5 rounded-xl text-sm";
 const Tag = ({ children, color }) => <span className={`tg-${color} text-[11px] font-bold px-2 py-1 rounded-lg`}>{children}</span>;
+const FINE_POINTER = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+function Tilt({ children, max = 7, className = "" }) {
+  const ref = useRef(null);
+  const move = (e) => { const el = ref.current; if (!el) return; const r = el.getBoundingClientRect(); const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height; el.style.transform = `perspective(650px) rotateX(${((0.5 - py) * max).toFixed(2)}deg) rotateY(${((px - 0.5) * max).toFixed(2)}deg) translateY(-2px)`; el.style.setProperty("--mx", (px * 100).toFixed(1) + "%"); el.style.setProperty("--my", (py * 100).toFixed(1) + "%"); };
+  const leave = () => { const el = ref.current; if (el) el.style.transform = ""; };
+  if (!FINE_POINTER) return <div className={className}>{children}</div>;
+  return <div ref={ref} className={`mr-tilt ${className}`} onMouseMove={move} onMouseLeave={leave}>{children}</div>;
+}
+function CountVal({ v }) {
+  const [n, setN] = useState(typeof v === "number" ? 0 : v);
+  useEffect(() => {
+    if (typeof v !== "number") return;
+    let raf; const t0 = performance.now(); const dur = 650;
+    const step = (t) => { const p = Math.min(1, (t - t0) / dur); setN(Math.round(v * (1 - Math.pow(1 - p, 3)))); if (p < 1) raf = requestAnimationFrame(step); };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [v]);
+  return <>{typeof v === "number" ? n : v}</>;
+}
+function WelcomeOverlay({ user, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 2150); return () => clearTimeout(t); }, []);
+  const sparks = useRef(Array.from({ length: 18 }, (_, i) => { const a = (i / 18) * Math.PI * 2 + Math.random() * 0.6; const d = 72 + Math.random() * 115; return { dx: Math.cos(a) * d, dy: Math.sin(a) * d, s: 3 + Math.random() * 4.5, c: Math.random() < 0.7 ? "#fb923c" : "#fbbf24" }; })).current;
+  const h = new Date().getHours(); const g = h < 11 ? "Selamat pagi" : h < 15 ? "Selamat siang" : h < 19 ? "Selamat sore" : "Selamat malam";
+  return createPortal(
+    <div className="mrw-wrap">
+      <div className="text-center">
+        <div className="relative w-44 h-44 grid place-items-center mx-auto">
+          <div className="mrw-ring" /><div className="mrw-ring mrw-ring2" />
+          {sparks.map((p, i) => <span key={i} className="mrw-spark" style={{ width: p.s, height: p.s, background: p.c, "--dx": p.dx + "px", "--dy": p.dy + "px" }} />)}
+          <img src={LOGO} alt="" className="mrw-logo h-12 relative z-10" draggable="false" />
+        </div>
+        <div className="mrw-text -mt-3"><p className="text-orange-400/90 text-[10px] tracking-[0.35em] font-bold">{g.toUpperCase()}</p><p className="text-white text-2xl font-extrabold mt-1.5">{user.name}</p></div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 function Avatar({ user, size = 36, onClick }) {
   const s = { width: size, height: size };
@@ -224,11 +261,11 @@ function Modal({ open, onClose, title, children }) {
   const isDark = typeof document !== "undefined" && !!document.querySelector(".mr-app.dark");
   return createPortal(
     <div
-      className={`mr-app ${isDark ? "dark" : ""} font-sans`}
+      className={`mr-app ${isDark ? "dark" : ""} font-sans mr-bdrop`}
       onClick={closeIfBackdrop}
       style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, background: "rgba(0,0,0,0.5)", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "16px" }}
     >
-      <div className="s-surface s-text" style={{ width: "100%", maxWidth: "448px", margin: "0 auto", borderRadius: "24px" }}>
+      <div className="s-surface s-text mr-modal-in" style={{ width: "100%", maxWidth: "448px", margin: "0 auto", borderRadius: "24px" }}>
         <div className="flex items-center justify-between" style={{ padding: "20px 20px 12px" }}>
           <h3 className="font-bold text-lg">{title}</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg s-soft"><X size={18} /></button>
@@ -335,6 +372,8 @@ function MotorellOps() {
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
   const [notifPerm, setNotifPerm] = useState(notifOK() ? Notification.permission : "unsupported");
   const [chatTick, setChatTick] = useState(0);
+  const [welcome, setWelcome] = useState(null);
+  const handleLogin = (u) => { setMe(u); setWelcome(u); };
   const askNotif = () => { if (!notifOK()) return; try { Notification.requestPermission().then((p) => { setNotifPerm(p); if (p === "granted" && me) enablePush(me.id); }).catch(() => {}); } catch (e) {} };
   const stateRef = useRef(state); stateRef.current = state;
   const chatOpenRef = useRef(chatOpen); chatOpenRef.current = chatOpen;
@@ -382,7 +421,7 @@ function MotorellOps() {
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
 
   if (!state) return <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
-  if (!me) return <Auth state={state} onLogin={setMe} update={update} />;
+  if (!me) return <Auth state={state} onLogin={handleLogin} update={update} />;
 
   const isOwner = me.role === "owner";
   const isAdmin = me.role === "admin";
@@ -422,13 +461,45 @@ function MotorellOps() {
 .an-r{animation:anFade .34s ease both}.an-l{animation:anFade .34s ease both}.an-up{animation:anUp .38s cubic-bezier(.16,1,.3,1) both}
 button{transition:transform .12s ease}
 *{-webkit-tap-highlight-color:transparent}html{scroll-behavior:smooth}
-@media (prefers-reduced-motion:reduce){.mr-fade,.an-r,.an-l,.an-up{animation:none}}
+@media (prefers-reduced-motion:reduce){.mr-fade,.an-r,.an-l,.an-up,.mr-shine,.mr-navon,.mrw-logo,.mrw-ring,.mrw-spark,.mrw-text{animation:none}.mrw-wrap{animation:mrwOut .3s ease .6s forwards}.mr-tilt{transition:none}}
 @keyframes catPop{0%{opacity:0;transform:scale(.3) translateY(20px)}55%{opacity:1;transform:scale(1.15)}100%{transform:scale(1)}}
 @keyframes catConfetti{0%{opacity:1;transform:translateY(-12vh) rotate(0)}100%{opacity:.85;transform:translateY(108vh) rotate(720deg)}}
 @keyframes catRun{0%{transform:translateX(-18vw)}100%{transform:translateX(118vw)}}
 @keyframes catWiggle{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
 @keyframes catToast{0%{opacity:0;transform:translateY(26px) scale(.9)}14%{opacity:1;transform:translateY(0) scale(1)}86%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-12px) scale(.95)}}
 .cat-wiggle{display:inline-block;animation:catWiggle 1.7s ease-in-out infinite;transform-origin:50% 85%}
+/* ===== login welcome transition ===== */
+@keyframes mrwIn{from{opacity:0}to{opacity:1}}
+@keyframes mrwOut{to{opacity:0;transform:scale(1.05);visibility:hidden}}
+@keyframes mrwLogo{0%{opacity:0;transform:scale(.35)}55%{opacity:1;transform:scale(1.14)}100%{opacity:1;transform:scale(1)}}
+@keyframes mrwRing{from{transform:scale(.25);opacity:.95}to{transform:scale(1.7);opacity:0}}
+@keyframes mrwSpark{from{transform:translate(-50%,-50%) scale(1);opacity:1}to{transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.15);opacity:0}}
+@keyframes mrwUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+.mrw-wrap{position:fixed;inset:0;z-index:95;display:grid;place-items:center;background:radial-gradient(1100px 700px at 50% 38%,#1a2342 0%,#020617 68%);animation:mrwIn .22s ease both,mrwOut .55s ease 1.5s forwards}
+.mrw-logo{animation:mrwLogo .85s cubic-bezier(.16,1,.3,1) .12s both;filter:drop-shadow(0 0 18px rgba(249,115,22,.55))}
+.mrw-ring{position:absolute;inset:0;border-radius:9999px;border:2px solid rgba(249,115,22,.45);animation:mrwRing 1.05s cubic-bezier(.2,.7,.3,1) .1s both}
+.mrw-ring2{border-color:rgba(251,191,36,.35);animation-delay:.28s}
+.mrw-spark{position:absolute;left:50%;top:50%;border-radius:9999px;animation:mrwSpark .95s cubic-bezier(.2,.7,.3,1) .14s both;box-shadow:0 0 8px rgba(249,115,22,.8)}
+.mrw-text{animation:mrwUp .6s cubic-bezier(.16,1,.3,1) .45s both}
+/* ===== 3D tilt cards ===== */
+.mr-tilt{position:relative;transition:transform .3s cubic-bezier(.2,.7,.3,1);transform-style:preserve-3d;will-change:transform}
+.mr-tilt::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s ease;background:radial-gradient(340px circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.16),transparent 62%)}
+.mr-tilt:hover::after{opacity:1}
+.mr-app.dark .mr-tilt::after{background:radial-gradient(340px circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.09),transparent 62%)}
+/* ===== shine sweep banner ===== */
+@keyframes mrShine{0%{background-position:130% 0}60%{background-position:-60% 0}100%{background-position:-60% 0}}
+.mr-shine{background:linear-gradient(115deg,transparent 42%,rgba(255,255,255,.13) 50%,transparent 58%);background-size:260% 100%;animation:mrShine 5.5s ease-in-out 1.2s infinite}
+/* ===== modal masuk ===== */
+@keyframes mrModal{from{opacity:0;transform:translateY(22px) scale(.965)}to{opacity:1;transform:none}}
+.mr-modal-in{animation:mrModal .34s cubic-bezier(.16,1,.3,1) both}
+.mr-bdrop{animation:mrFade .22s ease both}
+/* ===== nav aktif ===== */
+@keyframes navPop{0%{transform:scale(.65)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+.mr-navon{animation:navPop .32s cubic-bezier(.34,1.56,.64,1)}
+.mr-navon svg{filter:drop-shadow(0 0 7px rgba(249,115,22,.55))}
+/* ===== micro ===== */
+button:active{transform:scale(.97)}
+.s-surface{transition:box-shadow .25s ease}
 `}</style>
 
       <Fade delay={0}>
@@ -469,7 +540,7 @@ button{transition:transform .12s ease}
           const badge = t.id === "task" ? state.tasks.filter((x) => x.userId === me.id && !x.done).length : 0;
           return (
             <button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 md:gap-1 py-1 md:py-1.5 rounded-xl flex-1 active:scale-90 transition ${on ? "text-orange-500" : "s-muted"}`}>
-              <div className="relative"><Ic size={19} strokeWidth={on ? 2.5 : 2} />{badge > 0 && <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold rounded-full min-w-[15px] h-[15px] px-0.5 grid place-items-center leading-none">{badge > 9 ? "9+" : badge}</span>}</div>
+              <div className={`relative ${on ? "mr-navon" : ""}`}><Ic size={19} strokeWidth={on ? 2.5 : 2} />{badge > 0 && <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold rounded-full min-w-[15px] h-[15px] px-0.5 grid place-items-center leading-none">{badge > 9 ? "9+" : badge}</span>}</div>
               <span className="text-[9px] md:text-[11px] font-semibold">{t.label}</span>
             </button>
           );
@@ -478,6 +549,7 @@ button{transition:transform .12s ease}
 
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} chatTick={chatTick} />
       <FunFX />
+      {welcome && <WelcomeOverlay user={welcome} onDone={() => setWelcome(null)} />}
 
       <ProfileModal open={profile} me={me} state={state} onClose={() => setProfile(false)} update={update} setMe={setMe} dark={dark} toggleDark={toggleDark} onLogout={() => { setProfile(false); setMe(null); setTab("home"); }} />
     </div>
@@ -712,6 +784,7 @@ function GreetingBanner({ children }) {
   return (
     <div ref={wrapRef} className="relative overflow-hidden rounded-3xl">
       <canvas ref={cvRef} className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }} />
+      <div className="mr-shine absolute inset-0 z-[5]" style={{ pointerEvents: "none" }} />
       <div className="relative z-10 px-5 py-6" style={{ textShadow: "0 1px 10px rgba(0,0,0,0.45)" }}>{children}</div>
     </div>
   );
@@ -789,13 +862,13 @@ function HomeTab({ state, me, isOwner, go }) {
   );
 }
 const Stat = ({ label, value, sub, icon: Ic, color, small }) => (
-  <Card className="p-3.5"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`}>{value}</p><p className="text-[11px] s-muted">{sub || label}</p></Card>
+  <Tilt className="rounded-2xl h-full"><Card className="p-3.5 h-full"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`}><CountVal v={value} /></p><p className="text-[11px] s-muted">{sub || label}</p></Card></Tilt>
 );
 const StatStaff = ({ label, value, icon: Ic, color }) => (
-  <Card className="p-4"><div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className="text-xs font-semibold s-muted leading-tight">{label}</p></div><p className="text-3xl font-extrabold leading-none">{value}</p></Card>
+  <Tilt className="rounded-2xl h-full"><Card className="p-4 h-full"><div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className="text-xs font-semibold s-muted leading-tight">{label}</p></div><p className="text-3xl font-extrabold leading-none"><CountVal v={value} /></p></Card></Tilt>
 );
 const Quick = ({ label, icon: Ic, onClick }) => (
-  <button onClick={onClick} className="flex items-center gap-2 s-soft rounded-xl px-3 py-3 text-left"><Ic size={16} className="text-orange-500" /><span className="text-xs font-semibold">{label}</span></button>
+  <Tilt className="rounded-xl"><button onClick={onClick} className="w-full h-full flex items-center gap-2 s-soft rounded-xl px-3 py-3 text-left"><Ic size={16} className="text-orange-500" /><span className="text-xs font-semibold">{label}</span></button></Tilt>
 );
 
 /* ============ Absensi ============ */
