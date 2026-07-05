@@ -697,6 +697,24 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
     setCur(""); setNp(""); setNp2("");
   };
   const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 256, 0.72); if (!data) return; update((s) => { const u = s.users.find((x) => x.id === me.id); if (u) u.avatar = data; return s; }); setMe((prev) => ({ ...prev, avatar: data })); };
+  const [ntMsg, setNtMsg] = useState(null);
+  const testPush = async () => {
+    setNtMsg({ t: "info", m: "Ngetes… tunggu 2-3 detik." });
+    try {
+      if (!notifOK()) return setNtMsg({ t: "err", m: "Browser/perangkat ini tidak mendukung notifikasi. Di iPhone: buka app dari ikon home screen (Add to Home Screen dulu)." });
+      if (Notification.permission !== "granted") { const p = await Notification.requestPermission(); if (p !== "granted") return setNtMsg({ t: "err", m: "Izin notifikasi belum diizinkan di perangkat ini." }); }
+      await enablePush(me.id);
+      const r = await window.storage.sendPush([me.id], "Tes notifikasi 🎉", "Mantap! Push notif kamu aktif.", "/", true);
+      if (r && r.ok) {
+        const sent = r.data && typeof r.data.sent === "number" ? r.data.sent : null;
+        if (sent === 0) setNtMsg({ t: "err", m: "Function jalan, tapi 0 perangkat terkirim. Coba tutup app sepenuhnya lalu buka lagi & tes ulang." });
+        else setNtMsg({ t: "ok", m: `Terkirim${sent ? ` ke ${sent} perangkat` : ""}! Notif nongol beberapa detik lagi.${r.via === "send-psuh" ? " (Catatan: masih lewat function lama 'send-psuh' — sebaiknya bikin yang namanya benar: send-push.)" : ""}` });
+      } else {
+        const s = r && r.status;
+        setNtMsg({ t: "err", m: s === 404 ? "Function 'send-push' tidak ditemukan (404). Di Supabase, bikin function baru dengan nama persis: send-push (punyamu sekarang slug-nya 'send-psuh')." : (s === 401 || s === 403) ? "Ditolak server (401/403). Buka function di Supabase → Details → matikan 'Verify JWT' → Save, lalu tes lagi." : `Gagal: ${(r && r.error) || "tidak diketahui"}${s ? ` (status ${s})` : ""}.` });
+      }
+    } catch (e) { setNtMsg({ t: "err", m: "Gagal tes: " + e }); }
+  };
   return (
     <Modal open={open} onClose={onClose} title="Profil">
       <div className="flex flex-col items-center gap-3 mb-5">
@@ -733,6 +751,12 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
           <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={exportData}><Download size={14} className="inline mr-1 -mt-0.5" />Unduh backup</Btn><Btn variant="ghost" onClick={() => impRef.current && impRef.current.click()}>Pulihkan</Btn></div>
         </div>
       )}
+      <div className="s-soft rounded-xl px-4 py-3 mb-3">
+        <p className="text-sm font-semibold flex items-center gap-2 mb-1"><Bell size={16} />Tes notifikasi</p>
+        <p className="text-[11px] s-muted mb-2.5">Kirim push percobaan ke perangkat ini buat mastiin notif jalan (muncul walau app kebuka).</p>
+        {ntMsg && <p className={`text-xs mb-2 ${ntMsg.t === "ok" ? "text-emerald-500" : ntMsg.t === "err" ? "text-rose-500" : "s-muted"}`}>{ntMsg.m}</p>}
+        <Btn variant="ghost" onClick={testPush} className="w-full">Kirim tes sekarang</Btn>
+      </div>
       <Btn variant="ghost" onClick={onLogout} className="w-full"><LogOut size={15} className="inline mr-1.5 -mt-0.5" />Keluar</Btn>
     </Modal>
   );

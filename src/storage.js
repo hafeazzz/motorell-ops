@@ -182,11 +182,20 @@ storage.savePushSub = async (userId, sub) => {
 storage.deletePushSub = async (endpoint) => {
   try { if (endpoint) await supabase.from("push_subs").delete().eq("endpoint", endpoint); } catch (e) { console.error("deletePushSub error:", e); }
 };
-storage.sendPush = async (toUserIds, title, body, url) => {
+storage.sendPush = async (toUserIds, title, body, url, force) => {
+  const payload = { toUserIds, title, body: body || "", url: url || "/", force: !!force };
+  const call = async (name) => { try { return await supabase.functions.invoke(name, { body: payload }); } catch (e) { return { error: e }; } };
   try {
-    if (!toUserIds || !toUserIds.length) return;
-    await supabase.functions.invoke("send-push", { body: { toUserIds, title, body: body || "", url: url || "/" } });
-  } catch (e) { console.error("sendPush error:", e); }
+    if (!toUserIds || !toUserIds.length) return { ok: false, error: "Tidak ada penerima" };
+    const r = await call("send-push");
+    if (!r.error) return { ok: true, data: r.data, via: "send-push" };
+    // Fallback: nama function lama yang typo (send-psuh) biar tetap jalan sementara
+    const r2 = await call("send-psuh");
+    if (!r2.error) return { ok: true, data: r2.data, via: "send-psuh" };
+    const status = (r.error && r.error.context && r.error.context.status) || (r.error && r.error.status) || 0;
+    console.error("sendPush error:", r.error);
+    return { ok: false, status, error: String((r.error && r.error.message) || r.error) };
+  } catch (e) { console.error("sendPush error:", e); return { ok: false, error: String(e) }; }
 };
 
 if (typeof window !== "undefined") {

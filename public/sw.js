@@ -12,7 +12,7 @@ self.addEventListener("push", (event) => {
     try {
       const clientsArr = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const visible = clientsArr.some((c) => c.visibilityState === "visible" || c.focused);
-      if (visible) return;
+      if (visible && !data.force) return;
     } catch (e) {}
     const title = data.title || "Motorell";
     const options = {
