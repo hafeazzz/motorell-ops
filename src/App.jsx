@@ -161,7 +161,7 @@ function normalize(s) {
     chat: arr(s.chat, []),
   };
   out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
-  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", ...u }));
+  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
   return out;
@@ -440,11 +440,6 @@ function MotorellOps() {
   ];
   const order = tabs.map((t) => t.id);
   const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
-  const onTStart = (e) => { const p = e.touches[0]; touch.current = { x: p.clientX, y: p.clientY }; };
-  const onTEnd = (e) => {
-    const p = e.changedTouches[0]; const dx = p.clientX - touch.current.x, dy = p.clientY - touch.current.y;
-    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6) { const ci = order.indexOf(tab); const ni = dx < 0 ? ci + 1 : ci - 1; if (ni >= 0 && ni < order.length) goTab(order[ni]); }
-  };
 
   return (
     <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
@@ -516,7 +511,7 @@ button:active{transform:scale(.97)}
         </header>
       </Fade>
 
-      <main className="px-4 -mt-3 overflow-hidden" onTouchStart={onTStart} onTouchEnd={onTEnd}>
+      <main className="px-4 -mt-3 overflow-hidden">
         {notifPerm === "default" && (
           <div className="pt-6 pb-1"><Card className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: "#f9731622" }}><Bell size={18} className="text-orange-500" /></div>
@@ -967,6 +962,10 @@ function LiveProof({ live, userName, setZoom }) {
 function UangTab({ state, me, update }) {
   const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
   const [q, setQ] = useState(""); const [fs, setFs] = useState("all");
+  const [zoomU, setZoomU] = useState("");
+  const photoFileRef = useRef(null); const photoForRef = useRef(null);
+  const pickPhotoFor = (id) => { photoForRef.current = id; if (photoFileRef.current) photoFileRef.current.click(); };
+  const onCardPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const id = photoForRef.current; photoForRef.current = null; if (!f || !id) return; const data = await compress(f, 800, 0.5); if (data) update((s) => { const un = s.units.find((x) => x.id === id); if (un) un.photo = data; return s; }); };
   const visible = state.units.filter((u) => u.status !== "terjual" || !u.soldAt || inMonth(u.soldAt, month()));
   const archived = state.units.filter((u) => u.status === "terjual" && u.soldAt && !inMonth(u.soldAt, month())).length;
   const filtered = visible.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
@@ -991,6 +990,11 @@ function UangTab({ state, me, update }) {
               <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p><p className="text-[11px] s-muted flex items-center gap-1 mt-0.5"><Gauge size={12} className="shrink-0" />{u.odometer ? `${(+u.odometer).toLocaleString("id-ID")} km` : <span className="italic opacity-70">odometer belum diisi</span>}</p></div>
               <Tag color={u.status === "terjual" ? "emerald" : u.status === "siap" ? "blue" : "amber"}>{u.status === "terjual" ? "Terjual" : u.status === "siap" ? "Siap jual" : "Proses"}</Tag>
             </div>
+            {u.photo ? (
+              <img src={u.photo} onClick={() => setZoomU(u.photo)} className="w-full aspect-square object-cover rounded-xl mt-3 cursor-zoom-in" alt="" />
+            ) : (
+              <button onClick={() => pickPhotoFor(u.id)} className="w-full mt-3 rounded-xl py-5 text-xs font-semibold s-muted s-soft border border-dashed s-border flex items-center justify-center gap-1.5"><Camera size={15} className="text-orange-500" />Tambah foto motor</button>
+            )}
             <div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} accent="#f97316" /><Read label="Total modal" value={rp(modal)} /></div>
             <div className="flex items-center justify-between mt-3 pt-3 border-t s-border"><span className="text-xs s-muted">{u.sellPrice ? "Target jual " + rp(u.sellPrice) : "Belum ada harga jual"}</span>{profit !== null && <span className={`text-sm font-extrabold flex items-center gap-1 ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{rp(profit)}</span>}</div>
             <Btn variant="ghost" onClick={() => setExpModal({ mode: "add", unitId: u.id })} className="w-full mt-3"><Plus size={15} className="inline mr-1 -mt-0.5" />Catat pengeluaran</Btn>
@@ -1000,6 +1004,8 @@ function UangTab({ state, me, update }) {
       <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} />
       <UnitDetailModal unitId={detail} state={state} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
+      <input ref={photoFileRef} type="file" accept="image/*" className="hidden" onChange={onCardPhoto} />
+      <Lightbox src={zoomU} onClose={() => setZoomU("")} />
     </div>
   );
 }
@@ -1067,6 +1073,8 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
   };
   const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
   const delUnit = () => { update((s) => { s.units = s.units.filter((u) => u.id !== unitId); s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
+  const photoRef = useRef(null);
+  const onPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 800, 0.5); if (data) setField("photo", data); };
   return (
     <Modal open={!!unitId} onClose={onClose} title="Detail unit">
       <p className="text-[11px] s-muted -mt-2 mb-3">Semua kolom bisa diedit kapan saja.</p>
@@ -1075,6 +1083,14 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><DateBox label="Tanggal masuk" value={unit.inDate} onChange={(v) => setField("inDate", v)} /><DateBox label="Tanggal keluar (terjual)" value={unit.soldAt} onChange={(v) => setField("soldAt", v || null)} /></div>
       <div className="grid grid-cols-2 gap-2"><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} defaultValue={unit.odometer || ""} onBlur={(e) => setField("odometer", +e.target.value || 0)} placeholder="cth: 5000" /></Field></div>
+      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Foto motor</span>
+        {unit.photo ? (
+          <div className="space-y-2"><img src={unit.photo} className="w-full aspect-square object-cover rounded-xl" alt="" /><div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => photoRef.current && photoRef.current.click()}><Camera size={14} className="inline mr-1 -mt-0.5" />Ganti foto</Btn><Btn variant="ghost" onClick={() => setField("photo", "")} className="!text-rose-500">Hapus foto</Btn></div></div>
+        ) : (
+          <Btn variant="ghost" onClick={() => photoRef.current && photoRef.current.click()} className="w-full"><Camera size={14} className="inline mr-1 -mt-0.5" />Upload foto motor</Btn>
+        )}
+        <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+      </div>
       <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{l}</button>)}</div></div>
       {Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
       <p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
