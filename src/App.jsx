@@ -161,7 +161,7 @@ function normalize(s) {
     chat: arr(s.chat, []),
   };
   out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
-  out.units = out.units.map((u) => ({ investorCode: "", soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
+  out.units = out.units.map((u) => ({ investorCode: "", investorShare: 0, soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
   return out;
@@ -420,6 +420,11 @@ function MotorellOps() {
   }, []);
   const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
+  useEffect(() => {
+    const c = dark ? "#070b14" : "#0f172a";
+    try { document.documentElement.style.background = c; document.body.style.background = c; } catch (e) {}
+    try { let m = document.querySelector('meta[name="theme-color"]'); if (!m) { m = document.createElement("meta"); m.name = "theme-color"; document.head.appendChild(m); } m.setAttribute("content", c); } catch (e) {}
+  }, [dark]);
 
   if (!state) return <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
   if (!me) return <Auth state={state} onLogin={handleLogin} update={update} />;
@@ -960,6 +965,7 @@ function LiveProof({ live, userName, setZoom }) {
 
 /* ============ Keuangan ============ */
 function UangTab({ state, me, update }) {
+  const isMgr = me.role === "owner" || me.role === "admin";
   const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
   const [q, setQ] = useState(""); const [fs, setFs] = useState("all");
   const [zoomU, setZoomU] = useState("");
@@ -984,6 +990,7 @@ function UangTab({ state, me, update }) {
       {visible.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{filtered.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
+        const iShare = +u.investorShare || 0; const iCut = profit !== null && u.investorCode && iShare > 0 ? Math.round((profit * iShare) / 100) : null; const iNet = iCut !== null ? profit - iCut : null;
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-start justify-between" onClick={() => setDetail(u.id)}>
@@ -996,13 +1003,19 @@ function UangTab({ state, me, update }) {
               <button onClick={() => pickPhotoFor(u.id)} className="w-full mt-3 rounded-xl py-5 text-xs font-semibold s-muted s-soft border border-dashed s-border flex items-center justify-center gap-1.5"><Camera size={15} className="text-orange-500" />Tambah foto motor</button>
             )}
             <div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} accent="#f97316" /><Read label="Total modal" value={rp(modal)} /></div>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t s-border"><span className="text-xs s-muted">{u.sellPrice ? "Target jual " + rp(u.sellPrice) : "Belum ada harga jual"}</span>{profit !== null && <span className={`text-sm font-extrabold flex items-center gap-1 ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{rp(profit)}</span>}</div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t s-border"><span className="text-xs s-muted">{u.sellPrice ? "Target jual " + rp(u.sellPrice) : "Belum ada harga jual"}</span>{isMgr && profit !== null && <span className={`text-sm font-extrabold flex items-center gap-1 ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{rp(profit)}</span>}</div>
+            {isMgr && iCut !== null && (
+              <div className="mt-2 text-[11px] s-soft rounded-lg px-3 py-2 space-y-0.5">
+                <div className="flex justify-between gap-2"><span className="s-muted">Jatah investor {u.investorCode} ({iShare}%)</span><span className="font-semibold shrink-0">{rp(iCut)}</span></div>
+                <div className="flex justify-between gap-2"><span className="s-muted">Keuntungan bersih ({100 - iShare}%)</span><span className="font-bold text-emerald-500 shrink-0">{rp(iNet)}</span></div>
+              </div>
+            )}
             <Btn variant="ghost" onClick={() => setExpModal({ mode: "add", unitId: u.id })} className="w-full mt-3"><Plus size={15} className="inline mr-1 -mt-0.5" />Catat pengeluaran</Btn>
           </Card>
         );
       })}</div>
       <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} />
-      <UnitDetailModal unitId={detail} state={state} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
+      <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
       <input ref={photoFileRef} type="file" accept="image/*" className="hidden" onChange={onCardPhoto} />
       <Lightbox src={zoomU} onClose={() => setZoomU("")} />
@@ -1052,8 +1065,9 @@ function ExpenseModal({ data, units, me, onClose, update }) {
     </Modal>
   );
 }
-function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }) {
+function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, update }) {
   const unit = state.units.find((u) => u.id === unitId); if (!unit) return null;
+  const isMgr = me && (me.role === "owner" || me.role === "admin");
   const items = state.expenses.filter((e) => e.unitId === unitId);
   const byCat = items.reduce((m, e) => ({ ...m, [e.cat]: (m[e.cat] || 0) + e.amount }), {});
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
@@ -1083,6 +1097,24 @@ function UnitDetailModal({ unitId, state, onClose, onAddExp, onEditExp, update }
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><DateBox label="Tanggal masuk" value={unit.inDate} onChange={(v) => setField("inDate", v)} /><DateBox label="Tanggal keluar (terjual)" value={unit.soldAt} onChange={(v) => setField("soldAt", v || null)} /></div>
       <div className="grid grid-cols-2 gap-2"><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} defaultValue={unit.odometer || ""} onBlur={(e) => setField("odometer", +e.target.value || 0)} placeholder="cth: 5000" /></Field></div>
+      {isMgr && unit.investorCode && (() => {
+        const share = +unit.investorShare || 0;
+        const modal = unit.buyPrice + expByUnit(state, unitId);
+        const profit = unit.sellPrice ? unit.sellPrice - modal : null;
+        const iCut = profit !== null && share > 0 ? Math.round((profit * share) / 100) : null;
+        return (
+          <div className="mb-4">
+            <Field label={`Bagi hasil investor ${unit.investorCode} (%)`}><input type="number" min="0" max="100" className={inputCls} defaultValue={unit.investorShare || ""} onBlur={(e) => setField("investorShare", Math.max(0, Math.min(100, +e.target.value || 0)))} placeholder="cth: 20" /></Field>
+            {share > 0 && (profit !== null ? (
+              <div className="text-[11px] s-soft rounded-xl px-3 py-2.5 space-y-1 -mt-1">
+                <div className="flex justify-between gap-2"><span className="s-muted">Keuntungan motor ini</span><span className="font-semibold">{rp(profit)}</span></div>
+                <div className="flex justify-between gap-2"><span className="s-muted">Jatah investor ({share}%)</span><span className="font-semibold text-orange-500">{rp(iCut)}</span></div>
+                <div className="flex justify-between gap-2 pt-1.5 border-t s-border"><span className="font-semibold">Keuntungan bersih ({100 - share}%)</span><span className="font-extrabold text-emerald-500">{rp(profit - iCut)}</span></div>
+              </div>
+            ) : <p className="text-[11px] s-muted -mt-1">Isi target harga jual dulu buat lihat pembagiannya.</p>)}
+          </div>
+        );
+      })()}
       <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Foto motor</span>
         {unit.photo ? (
           <div className="space-y-2"><img src={unit.photo} className="w-full aspect-square object-cover rounded-xl" alt="" /><div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => photoRef.current && photoRef.current.click()}><Camera size={14} className="inline mr-1 -mt-0.5" />Ganti foto</Btn><Btn variant="ghost" onClick={() => setField("photo", "")} className="!text-rose-500">Hapus foto</Btn></div></div>
