@@ -5,7 +5,7 @@ import {
   TrendingDown, Wrench, Fuel, Package, Hand, Receipt, Circle,
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
-  MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff
+  MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -837,7 +837,7 @@ function HomeTab({ state, me, isOwner, go }) {
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <Stat label="Stok aktif" value={stokAktif} sub={`Terjual bulan ini: ${monthSold}`} icon={Bike} color="#f97316" />
             <Stat label="Hadir hari ini" value={todayAbsen.length} sub={`Dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
-            <Stat label="Profit bulan ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" />
+            <Stat label="Profit bulan ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" className="col-span-2 lg:col-span-1" />
           </div>
         ) : (
           <div className="space-y-3">
@@ -886,8 +886,8 @@ function HomeTab({ state, me, isOwner, go }) {
     </div>
   );
 }
-const Stat = ({ label, value, sub, icon: Ic, color, small }) => (
-  <Tilt className="rounded-2xl h-full"><Card className="p-3.5 h-full"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`}><CountVal v={value} /></p><p className="text-[11px] s-muted">{sub || label}</p></Card></Tilt>
+const Stat = ({ label, value, sub, icon: Ic, color, small, className = "" }) => (
+  <Tilt className={`rounded-2xl h-full ${className}`}><Card className="p-3.5 h-full"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`}><CountVal v={value} /></p><p className="text-[11px] s-muted">{sub || label}</p></Card></Tilt>
 );
 const StatStaff = ({ label, value, icon: Ic, color }) => (
   <Tilt className="rounded-2xl h-full"><Card className="p-4 h-full"><div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className="text-xs font-semibold s-muted leading-tight">{label}</p></div><p className="text-3xl font-extrabold leading-none"><CountVal v={value} /></p></Card></Tilt>
@@ -988,7 +988,7 @@ function UangTab({ state, me, update }) {
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-start justify-between" onClick={() => setDetail(u.id)}>
-              <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.odometer ? ` · ${(+u.odometer).toLocaleString("id-ID")} km` : ""}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p></div>
+              <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p><p className="text-[11px] s-muted flex items-center gap-1 mt-0.5"><Gauge size={12} className="shrink-0" />{u.odometer ? `${(+u.odometer).toLocaleString("id-ID")} km` : <span className="italic opacity-70">odometer belum diisi</span>}</p></div>
               <Tag color={u.status === "terjual" ? "emerald" : u.status === "siap" ? "blue" : "amber"}>{u.status === "terjual" ? "Terjual" : u.status === "siap" ? "Siap jual" : "Proses"}</Tag>
             </div>
             <div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} accent="#f97316" /><Read label="Total modal" value={rp(modal)} /></div>
