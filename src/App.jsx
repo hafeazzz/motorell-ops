@@ -22,11 +22,21 @@ const rp = (n) => "Rp " + (Number(n) || 0).toLocaleString("id-ID");
 const now = () => new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 const monthLabel = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" }); };
 const shiftMonth = (ym, d) => { const [y, m] = ym.split("-").map(Number); const i = y * 12 + (m - 1) + d; return `${Math.floor(i / 12)}-${pad2((i % 12) + 1)}`; };
+function wibParts() {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+    const h = +parts.find((p) => p.type === "hour").value;
+    const mnt = +parts.find((p) => p.type === "minute").value;
+    return { h: h % 24, m: mnt }; // %24 jaga-jaga kalau ada browser yg balikin "24" utk tengah malam
+  } catch (e) {
+    const d = new Date(); return { h: d.getHours(), m: d.getMinutes() }; // fallback kalau Intl gak didukung
+  }
+}
 function greeting() {
-  const m = new Date().getHours() * 60 + new Date().getMinutes();
-  if (m >= 240 && m <= 659) return { t: "Selamat pagi", e: "🌅" };
-  if (m >= 660 && m <= 899) return { t: "Selamat siang", e: "☀️" };
-  if (m >= 900 && m <= 1109) return { t: "Selamat sore", e: "🌇" };
+  const { h, m } = wibParts(); const mins = h * 60 + m;
+  if (mins >= 240 && mins <= 659) return { t: "Selamat pagi", e: "🌅" };
+  if (mins >= 660 && mins <= 899) return { t: "Selamat siang", e: "☀️" };
+  if (mins >= 900 && mins <= 1109) return { t: "Selamat sore", e: "🌇" };
   return { t: "Selamat malam", e: "🌙" };
 }
 function compress(file, maxW = 640, quality = 0.55) {
@@ -235,7 +245,7 @@ function CountVal({ v }) {
 function WelcomeOverlay({ user, onDone }) {
   useEffect(() => { const t = setTimeout(onDone, 2150); return () => clearTimeout(t); }, []);
   const sparks = useRef(Array.from({ length: 18 }, (_, i) => { const a = (i / 18) * Math.PI * 2 + Math.random() * 0.6; const d = 72 + Math.random() * 115; return { dx: Math.cos(a) * d, dy: Math.sin(a) * d, s: 3 + Math.random() * 4.5, c: Math.random() < 0.7 ? "#fb923c" : "#fbbf24" }; })).current;
-  const h = new Date().getHours(); const g = h < 11 ? "Selamat pagi" : h < 15 ? "Selamat siang" : h < 19 ? "Selamat sore" : "Selamat malam";
+  const { h } = wibParts(); const g = h < 11 ? "Selamat pagi" : h < 15 ? "Selamat siang" : h < 19 ? "Selamat sore" : "Selamat malam";
   return createPortal(
     <div className="mrw-wrap">
       <div className="text-center">
@@ -815,6 +825,8 @@ function GreetingBanner({ children }) {
   );
 }
 function HomeTab({ state, me, isOwner, go }) {
+  const [, setTick] = useState(0);
+  useEffect(() => { const iv = setInterval(() => setTick((t) => t + 1), 60000); return () => clearInterval(iv); }, []);
   const g = greeting();
   const proses = state.units.filter((u) => u.status === "proses").length;
   const monthSold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).length;
