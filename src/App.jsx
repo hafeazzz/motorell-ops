@@ -5,7 +5,8 @@ import {
   TrendingDown, Wrench, Fuel, Package, Hand, Receipt, Circle,
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
-  MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge
+  MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge,
+  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -378,6 +379,7 @@ function MotorellOps() {
   const [dark, setDark] = useState(false);
   const [profile, setProfile] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [handbookOpen, setHandbookOpen] = useState(false);
   const touch = useRef({ x: 0, y: 0 });
   const logoTaps = useRef(0); const logoTimer = useRef(null);
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
@@ -518,6 +520,7 @@ button:active{transform:scale(.97)}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6 cursor-pointer select-none" onClick={onLogoTap} draggable="false" /></div>
             <div className="flex items-center gap-2">
+              <button onClick={() => setHandbookOpen(true)} className="p-2 rounded-xl bg-white/10" title="Handbook"><BookOpen size={16} /></button>
               <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
               <button onClick={() => setProfile(true)}><Avatar user={me} size={34} /></button>
@@ -559,6 +562,7 @@ button:active{transform:scale(.97)}
       </nav>
 
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} chatTick={chatTick} />
+      <HandbookPage open={handbookOpen} onClose={() => setHandbookOpen(false)} isMgr={isMgr} />
       <FunFX />
       {welcome && <WelcomeOverlay user={welcome} onDone={() => setWelcome(null)} />}
 
@@ -1464,6 +1468,356 @@ function LaporanTab({ state }) {
 }
 
 /* ============ Group Chat ============ */
+/* ============================================================
+ * HANDBOOK — viewer PDF (pdf.js via CDN, pola lazy-load spt ensureXLSX)
+ * pdf.js 3.x UMD → expose window.pdfjsLib, worker dari CDN yang sama.
+ * Ini menghindari total gotcha bundling worker pdf.js + Vite (dev vs build).
+ * ============================================================ */
+const PDFJS_VER = "3.11.174";
+const PDFJS_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}`;
+function ensurePdfJs() {
+  return new Promise((resolve, reject) => {
+    if (window.pdfjsLib) return resolve(window.pdfjsLib);
+    const s = document.createElement("script");
+    s.src = `${PDFJS_CDN}/pdf.min.js`;
+    s.onload = () => {
+      try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = `${PDFJS_CDN}/pdf.worker.min.js`; } catch (e) {}
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = () => reject(new Error("load failed"));
+    document.head.appendChild(s);
+  });
+}
+
+/* FALLBACK daftar isi manual — dipakai HANYA jika PDF tidak punya outline/bookmark tertanam.
+   Isi manual sesuai nomor halaman asli di handbook, contoh:
+   { title: "Bab 1: Sambutan", page: 3 }, { title: "Bab 2: SOP Bengkel", page: 12 } */
+const HANDBOOK_TOC = [];
+const clampInt = (v, lo, hi) => { const n = parseInt(v, 10); if (isNaN(n)) return lo; return Math.max(lo, Math.min(hi, n)); };
+
+function HandbookPage({ open, onClose, isMgr }) {
+  const [phase, setPhase] = useState("idle"); // idle|loading|ready|error
+  const [errMsg, setErrMsg] = useState("");
+  const [numPages, setNumPages] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
+  const [zoom, setZoom] = useState(1);
+  const [toc, setToc] = useState([]);
+  const [showToc, setShowToc] = useState(false);
+  const [textIndex, setTextIndex] = useState(null);
+  const [indexing, setIndexing] = useState(false);
+  const [indexPct, setIndexPct] = useState(0);
+  const [query, setQuery] = useState("");
+  const [showResults, setShowResults] = useState(false);
+  const [meta, setMeta] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const pdfRef = useRef(null);        // dokumen pdf.js aktif
+  const tokenRef = useRef(null);      // versi (updatedAt) yang sedang dimuat
+  const loadedRef = useRef(false);
+  const cancelRef = useRef(false);    // batalkan proses async saat versi berganti
+  const canvasRef = useRef(null);
+  const scrollRef = useRef(null);
+  const renderTaskRef = useRef(null);
+  const pinchRef = useRef(null);
+  const fileRef = useRef(null);
+
+  const clampPage = (n) => Math.max(1, Math.min(numPages || 1, n));
+
+  const loadPdf = async () => {
+    cancelRef.current = false;
+    setPhase("loading"); setErrMsg("");
+    setTextIndex(null); setIndexing(false); setIndexPct(0); setToc([]);
+    try {
+      // ambil metadata versi (buat cache-bust & label "terakhir diperbarui")
+      let updatedAt = null;
+      try {
+        const r = await window.storage.get("motorell-handbook-meta", true);
+        if (r && r.value) { const m = JSON.parse(r.value); updatedAt = m.updatedAt || null; setMeta(m); }
+      } catch (e) {}
+      const token = updatedAt || "base";
+      tokenRef.current = token;
+      const url = window.storage.getHandbookUrl(updatedAt || undefined);
+      if (!url) throw new Error("URL handbook tidak tersedia");
+
+      const pdfjsLib = await ensurePdfJs();
+      const task = pdfjsLib.getDocument({ url });
+      const pdf = await task.promise;
+      if (cancelRef.current) return;
+      pdfRef.current = pdf;
+      setNumPages(pdf.numPages);
+      const startPage = clampInt(sessionStorage.getItem("mr-hb-page-" + token), 1, pdf.numPages);
+      setPage(startPage); setPageInput(String(startPage));
+      setPhase("ready");
+      loadedRef.current = true;
+      buildToc(pdf);
+      buildIndex(pdf, token);
+    } catch (e) {
+      console.error("loadPdf error:", e);
+      setErrMsg(String((e && e.message) || e));
+      setPhase("error");
+    }
+  };
+
+  const buildToc = async (pdf) => {
+    try {
+      const outline = await pdf.getOutline();
+      if (cancelRef.current) return;
+      if (outline && outline.length) {
+        const flat = [];
+        const resolve = async (item, depth) => {
+          let p = null;
+          try {
+            let d = item.dest;
+            if (typeof d === "string") d = await pdf.getDestination(d);
+            if (Array.isArray(d) && d[0]) p = (await pdf.getPageIndex(d[0])) + 1;
+          } catch (e) {}
+          flat.push({ title: item.title || "(tanpa judul)", page: p, depth });
+          if (item.items && item.items.length) for (const c of item.items) await resolve(c, depth + 1);
+        };
+        for (const it of outline) await resolve(it, 0);
+        if (!cancelRef.current) setToc(flat.filter((x) => x.page));
+        return;
+      }
+    } catch (e) { console.error("getOutline error:", e); }
+    // fallback: config manual
+    if (HANDBOOK_TOC.length) setToc(HANDBOOK_TOC.map((x) => ({ ...x, depth: 0 })));
+  };
+
+  const buildIndex = async (pdf, token) => {
+    const cacheKey = "mr-hb-idx-" + token;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) { setTextIndex(JSON.parse(cached)); return; }
+    } catch (e) {}
+    setIndexing(true); setIndexPct(0);
+    const idx = {};
+    for (let i = 1; i <= pdf.numPages; i++) {
+      if (cancelRef.current) { setIndexing(false); return; }
+      try {
+        const p = await pdf.getPage(i);
+        const tc = await p.getTextContent();
+        idx[i] = tc.items.map((it) => (it.str || "")).join(" ");
+      } catch (e) { idx[i] = ""; }
+      setIndexPct(Math.round((i / pdf.numPages) * 100));
+      if (i % 4 === 0) await new Promise((r) => setTimeout(r, 0)); // yield agar UI tidak freeze
+    }
+    if (cancelRef.current) { setIndexing(false); return; }
+    setTextIndex(idx); setIndexing(false);
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(idx)); } catch (e) {}
+  };
+
+  const renderPage = async (num) => {
+    const pdf = pdfRef.current; const canvas = canvasRef.current;
+    if (!pdf || !canvas) return;
+    try {
+      const p = await pdf.getPage(num);
+      const contW = (scrollRef.current ? scrollRef.current.clientWidth : 360) - 24;
+      const vp1 = p.getViewport({ scale: 1 });
+      const fit = contW / vp1.width;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cssScale = fit * zoom;
+      const vp = p.getViewport({ scale: cssScale * dpr });
+      if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) {} }
+      canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
+      canvas.style.width = Math.floor(vp.width / dpr) + "px";
+      canvas.style.height = Math.floor(vp.height / dpr) + "px";
+      const ctx = canvas.getContext("2d");
+      const task = p.render({ canvasContext: ctx, viewport: vp });
+      renderTaskRef.current = task;
+      await task.promise;
+    } catch (e) {
+      if (e && e.name === "RenderingCancelledException") return;
+      console.error("renderPage error:", e);
+    }
+  };
+
+  // muat sekali saat pertama dibuka (komponen tetap mounted saat ditutup → state awet)
+  useEffect(() => {
+    if (open && !loadedRef.current && phase === "idle") loadPdf();
+  }, [open]);
+
+  // render ulang saat halaman / zoom berubah
+  useEffect(() => {
+    if (phase === "ready") renderPage(page);
+  }, [page, zoom, phase]);
+
+  // render ulang saat ukuran layar berubah (rotate / resize), di-debounce
+  useEffect(() => {
+    if (!open) return;
+    let t = null;
+    const onResize = () => { if (t) clearTimeout(t); t = setTimeout(() => { if (phase === "ready") renderPage(page); }, 160); };
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("resize", onResize); if (t) clearTimeout(t); };
+  }, [open, page, zoom, phase]);
+
+  // simpan posisi halaman terakhir
+  useEffect(() => {
+    if (phase === "ready" && tokenRef.current) { try { sessionStorage.setItem("mr-hb-page-" + tokenRef.current, String(page)); } catch (e) {} }
+  }, [page, phase]);
+
+  const goPage = (n) => { const c = clampPage(n); setPage(c); setPageInput(String(c)); setShowResults(false); if (scrollRef.current) scrollRef.current.scrollTop = 0; };
+  const commitInput = () => { const n = parseInt(pageInput, 10); if (!isNaN(n)) goPage(n); else setPageInput(String(page)); };
+
+  // hasil pencarian
+  const results = (() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2 || !textIndex) return [];
+    const out = [];
+    for (const pg of Object.keys(textIndex)) {
+      const txt = textIndex[pg]; if (!txt) continue;
+      const low = txt.toLowerCase();
+      const at = low.indexOf(q);
+      if (at === -1) continue;
+      const start = Math.max(0, at - 32);
+      const snippet = (start > 0 ? "…" : "") + txt.slice(start, at + q.length + 48) + "…";
+      out.push({ page: Number(pg), at: at - start + (start > 0 ? 1 : 0), qlen: q.length, snippet });
+      if (out.length >= 8) break;
+    }
+    return out;
+  })();
+
+  const doUpload = async (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    if (f.type !== "application/pdf" && !/\.pdf$/i.test(f.name)) { alert("File harus PDF."); return; }
+    setUploading(true);
+    const r = await window.storage.uploadHandbook(f);
+    setUploading(false);
+    if (!r.ok) { alert("Gagal upload: " + (r.error || "coba lagi")); return; }
+    // reset cache versi lama + muat ulang versi baru
+    cancelRef.current = true;
+    try { const old = tokenRef.current; if (old) { sessionStorage.removeItem("mr-hb-idx-" + old); sessionStorage.removeItem("mr-hb-page-" + old); } } catch (er) {}
+    if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (er) {} }
+    try { if (pdfRef.current && pdfRef.current.destroy) pdfRef.current.destroy(); } catch (er) {}
+    pdfRef.current = null; loadedRef.current = false;
+    setQuery(""); setShowResults(false); setShowToc(false);
+    setPhase("idle");
+    setTimeout(() => loadPdf(), 0);
+    alert("Handbook berhasil diperbarui ✔");
+  };
+
+  // pinch-to-zoom (bonus)
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const onTouchStart = (e) => { if (e.touches.length === 2) pinchRef.current = { d: dist(e.touches), z: zoom }; };
+  const onTouchMove = (e) => { if (e.touches.length === 2 && pinchRef.current) { const nz = Math.max(0.6, Math.min(4, pinchRef.current.z * (dist(e.touches) / pinchRef.current.d))); setZoom(nz); } };
+  const onTouchEnd = () => { pinchRef.current = null; };
+
+  const updatedLabel = meta && meta.updatedAt ? new Date(meta.updatedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : null;
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[56] s-bg flex flex-col max-w-4xl mx-auto an-up">
+      {/* header */}
+      <div style={{ background: "var(--header)" }} className="text-white px-3 py-2.5 flex items-center gap-2 shrink-0">
+        <button onClick={onClose} className="p-1.5 active:scale-90"><ArrowLeft size={20} /></button>
+        <div className="w-8 h-8 rounded-xl bg-orange-500 grid place-items-center shrink-0"><BookOpen size={16} /></div>
+        <div className="min-w-0 flex-1">
+          <p className="font-bold leading-tight truncate">Handbook</p>
+          <p className="text-[10px] text-slate-400 leading-tight">{updatedLabel ? "Diperbarui " + updatedLabel : "Panduan tim Motorell"}</p>
+        </div>
+        {(toc.length > 0) && <button onClick={() => setShowToc(true)} className="p-2 rounded-xl bg-white/10 active:scale-90" title="Daftar isi"><List size={16} /></button>}
+        {isMgr && <button onClick={() => fileRef.current && fileRef.current.click()} disabled={uploading} className="p-2 rounded-xl bg-white/10 active:scale-90 disabled:opacity-50" title="Kelola handbook">{uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}</button>}
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={doUpload} />
+      </div>
+
+      {/* search bar sticky */}
+      <div className="s-surface s-border border-b px-3 py-2 shrink-0 relative">
+        <div className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">
+          <Search size={16} className="s-muted shrink-0" />
+          <input
+            className="bg-transparent outline-none text-sm flex-1 s-text"
+            placeholder={indexing ? `Menyiapkan pencarian… ${indexPct}%` : "Cari di handbook…"}
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
+            onFocus={() => setShowResults(true)}
+          />
+          {query && <button onClick={() => { setQuery(""); setShowResults(false); }} className="s-muted active:scale-90"><X size={16} /></button>}
+        </div>
+        {indexing && <div className="h-0.5 mt-1 rounded-full overflow-hidden s-soft"><div className="h-full bg-orange-500 transition-all" style={{ width: indexPct + "%" }} /></div>}
+        {showResults && query.trim().length >= 2 && (
+          <div className="absolute left-3 right-3 top-full mt-1 s-surface s-border border rounded-xl shadow-xl z-10 overflow-hidden">
+            {textIndex == null && <p className="text-xs s-muted px-3 py-3 flex items-center gap-2"><Loader2 size={13} className="animate-spin" /> Menyiapkan pencarian… {indexPct}%</p>}
+            {textIndex != null && results.length === 0 && <p className="text-xs s-muted px-3 py-3">Tidak ada hasil untuk “{query.trim()}”.</p>}
+            {results.map((r, i) => {
+              const before = r.snippet.slice(0, r.at); const hit = r.snippet.slice(r.at, r.at + r.qlen); const after = r.snippet.slice(r.at + r.qlen);
+              return (
+                <button key={i} onClick={() => goPage(r.page)} className="w-full text-left px-3 py-2 border-b s-border last:border-0 active:s-soft hover:s-soft transition">
+                  <div className="flex items-center gap-2 mb-0.5"><span className="text-[10px] font-bold text-orange-500">Halaman {r.page}</span></div>
+                  <p className="text-xs s-muted leading-snug break-words">{before}<span className="font-bold text-orange-500">{hit}</span>{after}</p>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* viewer */}
+      <div ref={scrollRef} className="flex-1 overflow-auto flex items-start justify-center p-3" onClick={() => setShowResults(false)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+        {phase === "loading" && (
+          <div className="w-full max-w-[520px] mt-6">
+            <div className="s-soft rounded-xl animate-pulse" style={{ aspectRatio: "1 / 1.414" }} />
+            <p className="text-center text-sm s-muted mt-4 flex items-center justify-center gap-2"><Loader2 size={15} className="animate-spin" /> Memuat handbook…</p>
+          </div>
+        )}
+        {phase === "error" && (
+          <div className="text-center mt-16 px-6">
+            <div className="w-14 h-14 rounded-2xl s-soft grid place-items-center mx-auto mb-3"><BookOpen size={24} className="s-muted" /></div>
+            <p className="font-semibold">Handbook belum tersedia</p>
+            <p className="text-xs s-muted mt-1 break-words">{errMsg}</p>
+            {isMgr && <Btn onClick={() => fileRef.current && fileRef.current.click()} className="mt-4"><Upload size={15} className="inline mr-1.5 -mt-0.5" />Upload PDF</Btn>}
+            {!isMgr && <p className="text-xs s-muted mt-3">Hubungi admin untuk mengunggah handbook.</p>}
+          </div>
+        )}
+        {phase === "ready" && <canvas ref={canvasRef} className="rounded-lg shadow-lg s-border border max-w-none" />}
+      </div>
+
+      {/* bottom nav + zoom */}
+      {phase === "ready" && (
+        <div className="s-surface s-border border-t px-3 py-2 shrink-0 flex items-center gap-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]">
+          <button onClick={() => goPage(page - 1)} disabled={page <= 1} className="p-2 rounded-xl s-soft active:scale-90 disabled:opacity-40"><ChevronLeft size={18} /></button>
+          <div className="flex items-center gap-1 text-sm">
+            <input
+              className="s-input w-12 text-center px-1 py-1.5 rounded-lg text-sm" inputMode="numeric"
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ""))}
+              onBlur={commitInput}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            />
+            <span className="s-muted whitespace-nowrap">/ {numPages}</span>
+          </div>
+          <button onClick={() => goPage(page + 1)} disabled={page >= numPages} className="p-2 rounded-xl s-soft active:scale-90 disabled:opacity-40"><ChevronRight size={18} /></button>
+          <div className="flex-1" />
+          <button onClick={() => setZoom((z) => Math.max(0.6, +(z - 0.25).toFixed(2)))} className="p-2 rounded-xl s-soft active:scale-90"><ZoomOut size={18} /></button>
+          <span className="text-xs s-muted w-9 text-center">{Math.round(zoom * 100)}%</span>
+          <button onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))} className="p-2 rounded-xl s-soft active:scale-90"><ZoomIn size={18} /></button>
+        </div>
+      )}
+
+      {/* drawer daftar isi */}
+      {showToc && (
+        <div className="fixed inset-0 z-[57] flex" onClick={() => setShowToc(false)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative s-bg w-[82%] max-w-xs h-full overflow-y-auto an-l shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div style={{ background: "var(--header)" }} className="text-white px-4 py-3 flex items-center justify-between sticky top-0">
+              <span className="font-bold flex items-center gap-2"><List size={17} /> Daftar Isi</span>
+              <button onClick={() => setShowToc(false)} className="active:scale-90"><X size={18} /></button>
+            </div>
+            <div className="p-2">
+              {toc.map((it, i) => (
+                <button key={i} onClick={() => { goPage(it.page); setShowToc(false); }} className={`w-full text-left px-3 py-2.5 rounded-xl active:s-soft hover:s-soft transition flex items-center justify-between gap-2 ${it.page === page ? "s-soft" : ""}`} style={{ paddingLeft: 12 + it.depth * 14 }}>
+                  <span className={`text-sm break-words ${it.depth === 0 ? "font-semibold" : "s-muted"}`}>{it.title}</span>
+                  <span className="text-[11px] s-muted shrink-0">{it.page}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatPage({ open, onClose, state, me, update, chatTick }) {
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState("");

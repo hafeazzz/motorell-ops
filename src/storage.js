@@ -169,6 +169,32 @@ storage.chatSubscribe = (cb) => {
   return () => { try { supabase.removeChannel(channel); } catch (e) {} };
 };
 
+/* ===== HANDBOOK: file PDF disimpan di Supabase Storage (bucket "handbook") =====
+   File selalu bernama tetap "handbook.pdf" supaya gampang di-replace & URL stabil.
+   Metadata kecil (tanggal update) disimpan di kv "motorell-handbook-meta". */
+const HANDBOOK_BUCKET = "handbook";
+const HANDBOOK_FILE = "handbook.pdf";
+storage.getHandbookUrl = (bust) => {
+  try {
+    const { data } = supabase.storage.from(HANDBOOK_BUCKET).getPublicUrl(HANDBOOK_FILE);
+    let url = data && data.publicUrl;
+    if (!url) return null;
+    if (bust) url += (url.includes("?") ? "&" : "?") + "t=" + bust; // cache-bust biar semua HP dapat versi terbaru
+    return url;
+  } catch (e) { console.error("getHandbookUrl error:", e); return null; }
+};
+storage.uploadHandbook = async (file) => {
+  try {
+    const { error } = await supabase.storage
+      .from(HANDBOOK_BUCKET)
+      .upload(HANDBOOK_FILE, file, { upsert: true, contentType: "application/pdf", cacheControl: "3600" });
+    if (error) throw error;
+    const updatedAt = Date.now();
+    await storage.set("motorell-handbook-meta", JSON.stringify({ updatedAt }), true);
+    return { ok: true, url: storage.getHandbookUrl(updatedAt), updatedAt };
+  } catch (e) { console.error("uploadHandbook error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+
 /* ===== Web Push: simpan subscription & kirim push lewat Edge Function ===== */
 storage.savePushSub = async (userId, sub) => {
   try {
