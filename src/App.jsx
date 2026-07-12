@@ -1521,6 +1521,9 @@ function HandbookPage({ open, onClose, isMgr }) {
   const renderTaskRef = useRef(null);
   const pinchRef = useRef(null);
   const fileRef = useRef(null);
+  const flipRef = useRef({ accum: 0, cd: false }); // scroll-untuk-pindah-halaman
+  const pendingScrollRef = useRef(null);            // 'top' | 'bottom' posisi scroll setelah render
+  const touchYRef = useRef(null);
 
   const clampPage = (n) => Math.max(1, Math.min(numPages || 1, n));
 
@@ -1637,9 +1640,20 @@ function HandbookPage({ open, onClose, isMgr }) {
     if (open && !loadedRef.current && phase === "idle") loadPdf();
   }, [open]);
 
-  // render ulang saat halaman / zoom berubah
+  // render ulang saat halaman / zoom berubah, lalu tempatkan posisi scroll
   useEffect(() => {
-    if (phase === "ready") renderPage(page);
+    if (phase !== "ready") return;
+    let cancelled = false;
+    (async () => {
+      await renderPage(page);
+      if (cancelled) return;
+      const el = scrollRef.current;
+      if (el && pendingScrollRef.current) {
+        el.scrollTop = pendingScrollRef.current === "bottom" ? el.scrollHeight : 0;
+        pendingScrollRef.current = null;
+      }
+    })();
+    return () => { cancelled = true; };
   }, [page, zoom, phase]);
 
   // render ulang saat ukuran layar berubah (rotate / resize), di-debounce
@@ -1657,6 +1671,24 @@ function HandbookPage({ open, onClose, isMgr }) {
   }, [page, phase]);
 
   const goPage = (n) => { const c = clampPage(n); setPage(c); setPageInput(String(c)); setShowResults(false); if (scrollRef.current) scrollRef.current.scrollTop = 0; };
+
+  // ── scroll untuk pindah halaman (opsi ke-2 selain tombol) ──
+  const atTop = () => { const el = scrollRef.current; return !!el && el.scrollTop <= 2; };
+  const atBottom = () => { const el = scrollRef.current; return !!el && el.scrollTop + el.clientHeight >= el.scrollHeight - 2; };
+  const flip = (dir) => {
+    if (flipRef.current.cd) return;
+    const target = page + dir;
+    if (target < 1 || target > numPages) return;
+    flipRef.current.cd = true;
+    pendingScrollRef.current = dir > 0 ? "top" : "bottom"; // lompat halaman: mulai dari atas / lanjut dari bawah
+    goPage(target);
+    setTimeout(() => { flipRef.current.cd = false; flipRef.current.accum = 0; }, 450);
+  };
+  const onWheel = (e) => {
+    if (e.deltaY > 0 && atBottom()) { flipRef.current.accum += e.deltaY; if (flipRef.current.accum > 40) flip(1); }
+    else if (e.deltaY < 0 && atTop()) { flipRef.current.accum += e.deltaY; if (flipRef.current.accum < -40) flip(-1); }
+    else flipRef.current.accum = 0;
+  };
   const commitInput = () => { const n = parseInt(pageInput, 10); if (!isNaN(n)) goPage(n); else setPageInput(String(page)); };
 
   // hasil pencarian
@@ -1699,9 +1731,20 @@ function HandbookPage({ open, onClose, isMgr }) {
 
   // pinch-to-zoom (bonus)
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-  const onTouchStart = (e) => { if (e.touches.length === 2) pinchRef.current = { d: dist(e.touches), z: zoom }; };
+  const onTouchStart = (e) => {
+    if (e.touches.length === 2) { pinchRef.current = { d: dist(e.touches), z: zoom }; touchYRef.current = null; }
+    else if (e.touches.length === 1) { touchYRef.current = { y: e.touches[0].clientY, top: atTop(), bottom: atBottom() }; }
+  };
   const onTouchMove = (e) => { if (e.touches.length === 2 && pinchRef.current) { const nz = Math.max(0.6, Math.min(4, pinchRef.current.z * (dist(e.touches) / pinchRef.current.d))); setZoom(nz); } };
-  const onTouchEnd = () => { pinchRef.current = null; };
+  const onTouchEnd = (e) => {
+    pinchRef.current = null;
+    const t = touchYRef.current; touchYRef.current = null;
+    if (!t) return;
+    const endY = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : t.y;
+    const dy = t.y - endY; // + = geser ke atas (mau halaman berikutnya), - = geser ke bawah
+    if (dy > 55 && (t.bottom || atBottom())) flip(1);
+    else if (dy < -55 && (t.top || atTop())) flip(-1);
+  };
 
   const updatedLabel = meta && meta.updatedAt ? new Date(meta.updatedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : null;
 
@@ -1753,7 +1796,7 @@ function HandbookPage({ open, onClose, isMgr }) {
       </div>
 
       {/* viewer */}
-      <div ref={scrollRef} className="flex-1 overflow-auto flex items-start justify-center p-3" onClick={() => setShowResults(false)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div ref={scrollRef} className="flex-1 overflow-auto flex items-start justify-center p-3" onClick={() => setShowResults(false)} onWheel={onWheel} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         {phase === "loading" && (
           <div className="w-full max-w-[520px] mt-6">
             <div className="s-soft rounded-xl animate-pulse" style={{ aspectRatio: "1 / 1.414" }} />
