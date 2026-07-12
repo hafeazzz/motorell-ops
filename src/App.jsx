@@ -1495,6 +1495,49 @@ function ensurePdfJs() {
 const HANDBOOK_TOC = [];
 const clampInt = (v, lo, hi) => { const n = parseInt(v, 10); if (isNaN(n)) return lo; return Math.max(lo, Math.min(hi, n)); };
 
+/* Satu halaman di viewer continuous. Render canvas HANYA saat shouldRender (dekat viewport),
+   dan lepaskan (canvas 0×0) saat jauh → hemat memori meski dokumen 123 halaman. */
+function HbPage({ pdf, num, cssWidth, baseRatio, shouldRender }) {
+  const canvasRef = useRef(null);
+  const taskRef = useRef(null);
+  const doneRef = useRef(0); // lebar css yang terakhir dirender (0 = belum)
+  const [ratio, setRatio] = useState(baseRatio);
+  useEffect(() => {
+    if (!shouldRender || !pdf || !cssWidth) {
+      if (!shouldRender) { const c = canvasRef.current; if (c) { c.width = 0; c.height = 0; } doneRef.current = 0; }
+      return;
+    }
+    if (doneRef.current === cssWidth) return; // sudah dirender pada lebar ini
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = await pdf.getPage(num);
+        if (cancelled) return;
+        const vp1 = p.getViewport({ scale: 1 });
+        const r = vp1.height / vp1.width;
+        if (Math.abs(r - ratio) > 0.001) setRatio(r);
+        const canvas = canvasRef.current; if (!canvas) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const vp = p.getViewport({ scale: (cssWidth / vp1.width) * dpr });
+        if (taskRef.current) { try { taskRef.current.cancel(); } catch (e) {} }
+        canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
+        const ctx = canvas.getContext("2d");
+        const task = p.render({ canvasContext: ctx, viewport: vp });
+        taskRef.current = task;
+        await task.promise;
+        doneRef.current = cssWidth;
+      } catch (e) { if (!(e && e.name === "RenderingCancelledException")) console.error("HbPage render:", e); }
+    })();
+    return () => { cancelled = true; };
+  }, [shouldRender, cssWidth, num, pdf]);
+  return (
+    <div data-page={num} style={{ width: cssWidth, height: Math.round(cssWidth * ratio) }} className="mx-auto mb-3 s-surface s-border border rounded-lg shadow-md overflow-hidden relative">
+      <span className="absolute inset-0 grid place-items-center text-xs s-muted pointer-events-none">{num}</span>
+      <canvas ref={canvasRef} className="relative" style={{ display: "block", width: "100%", height: "100%" }} />
+    </div>
+  );
+}
+
 function HandbookPage({ open, onClose, isMgr }) {
   const [phase, setPhase] = useState("idle"); // idle|loading|ready|error
   const [errMsg, setErrMsg] = useState("");
@@ -1512,18 +1555,19 @@ function HandbookPage({ open, onClose, isMgr }) {
   const [meta, setMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  const [viewW, setViewW] = useState(0);              // lebar area render (px, tanpa padding)
+  const [baseRatio, setBaseRatio] = useState(1.414);  // rasio tinggi/lebar halaman (dari hal. 1)
+  const [renderSet, setRenderSet] = useState(() => new Set()); // halaman yg dirender (virtualisasi)
+
   const pdfRef = useRef(null);        // dokumen pdf.js aktif
   const tokenRef = useRef(null);      // versi (updatedAt) yang sedang dimuat
   const loadedRef = useRef(false);
   const cancelRef = useRef(false);    // batalkan proses async saat versi berganti
-  const canvasRef = useRef(null);
   const scrollRef = useRef(null);
-  const renderTaskRef = useRef(null);
   const pinchRef = useRef(null);
   const fileRef = useRef(null);
-  const flipRef = useRef({ accum: 0, cd: false }); // scroll-untuk-pindah-halaman
-  const pendingScrollRef = useRef(null);            // 'top' | 'bottom' posisi scroll setelah render
-  const touchYRef = useRef(null);
+  const pageRef = useRef(1);          // halaman aktif terkini (hindari stale di handler scroll)
+  const initPageRef = useRef(null);   // halaman awal yg di-scroll setelah render pertama
 
   const clampPage = (n) => Math.max(1, Math.min(numPages || 1, n));
 
@@ -1549,8 +1593,12 @@ function HandbookPage({ open, onClose, isMgr }) {
       if (cancelRef.current) return;
       pdfRef.current = pdf;
       setNumPages(pdf.numPages);
+      try { const p1 = await pdf.getPage(1); const v1 = p1.getViewport({ scale: 1 }); if (!cancelRef.current) setBaseRatio(v1.height / v1.width); } catch (er) {}
+      if (cancelRef.current) return;
       const startPage = clampInt(sessionStorage.getItem("mr-hb-page-" + token), 1, pdf.numPages);
       setPage(startPage); setPageInput(String(startPage));
+      pageRef.current = startPage; initPageRef.current = startPage;
+      setRenderSet(new Set());
       setPhase("ready");
       loadedRef.current = true;
       buildToc(pdf);
@@ -1610,85 +1658,92 @@ function HandbookPage({ open, onClose, isMgr }) {
     try { sessionStorage.setItem(cacheKey, JSON.stringify(idx)); } catch (e) {}
   };
 
-  const renderPage = async (num) => {
-    const pdf = pdfRef.current; const canvas = canvasRef.current;
-    if (!pdf || !canvas) return;
-    try {
-      const p = await pdf.getPage(num);
-      const contW = (scrollRef.current ? scrollRef.current.clientWidth : 360) - 24;
-      const vp1 = p.getViewport({ scale: 1 });
-      const fit = contW / vp1.width;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const cssScale = fit * zoom;
-      const vp = p.getViewport({ scale: cssScale * dpr });
-      if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) {} }
-      canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
-      canvas.style.width = Math.floor(vp.width / dpr) + "px";
-      canvas.style.height = Math.floor(vp.height / dpr) + "px";
-      const ctx = canvas.getContext("2d");
-      const task = p.render({ canvasContext: ctx, viewport: vp });
-      renderTaskRef.current = task;
-      await task.promise;
-    } catch (e) {
-      if (e && e.name === "RenderingCancelledException") return;
-      console.error("renderPage error:", e);
-    }
-  };
-
   // muat sekali saat pertama dibuka (komponen tetap mounted saat ditutup → state awet)
   useEffect(() => {
     if (open && !loadedRef.current && phase === "idle") loadPdf();
   }, [open]);
 
-  // render ulang saat halaman / zoom berubah, lalu tempatkan posisi scroll
+  // ukur lebar area render; ganti cssWidth otomatis memicu HbPage render ulang (resize/rotate)
   useEffect(() => {
     if (phase !== "ready") return;
-    let cancelled = false;
-    (async () => {
-      await renderPage(page);
-      if (cancelled) return;
-      const el = scrollRef.current;
-      if (el && pendingScrollRef.current) {
-        el.scrollTop = pendingScrollRef.current === "bottom" ? el.scrollHeight : 0;
-        pendingScrollRef.current = null;
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [page, zoom, phase]);
+    const measure = () => { const el = scrollRef.current; if (el) setViewW(Math.max(200, el.clientWidth - 24)); };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [phase, open]);
 
-  // render ulang saat ukuran layar berubah (rotate / resize), di-debounce
+  // virtualisasi: render hanya halaman yang dekat viewport (buffer 1200px atas/bawah)
   useEffect(() => {
-    if (!open) return;
-    let t = null;
-    const onResize = () => { if (t) clearTimeout(t); t = setTimeout(() => { if (phase === "ready") renderPage(page); }, 160); };
-    window.addEventListener("resize", onResize);
-    return () => { window.removeEventListener("resize", onResize); if (t) clearTimeout(t); };
-  }, [open, page, zoom, phase]);
+    if (phase !== "ready" || !numPages) return;
+    const root = scrollRef.current; if (!root) return;
+    const io = new IntersectionObserver((entries) => {
+      setRenderSet((prev) => {
+        const next = new Set(prev); let changed = false;
+        for (const en of entries) {
+          const n = Number(en.target.getAttribute("data-page"));
+          if (en.isIntersecting) { if (!next.has(n)) { next.add(n); changed = true; } }
+          else if (next.has(n)) { next.delete(n); changed = true; }
+        }
+        return changed ? next : prev;
+      });
+    }, { root, rootMargin: "1200px 0px", threshold: 0.01 });
+    root.querySelectorAll("[data-page]").forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [phase, numPages, viewW]);
+
+  // lacak halaman aktif dari posisi scroll → indikator "X / N"
+  useEffect(() => {
+    if (phase !== "ready") return;
+    const root = scrollRef.current; if (!root) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const rr = root.getBoundingClientRect();
+        const midY = rr.top + rr.height * 0.35;
+        const els = root.querySelectorAll("[data-page]");
+        for (const el of els) {
+          const r = el.getBoundingClientRect();
+          if (r.top <= midY && r.bottom >= midY) {
+            const n = Number(el.getAttribute("data-page"));
+            if (n !== pageRef.current) { pageRef.current = n; setPage(n); setPageInput(String(n)); }
+            break;
+          }
+        }
+      });
+    };
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => { root.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
+  }, [phase]);
+
+  const scrollToPage = (n, behavior = "smooth") => {
+    const root = scrollRef.current; if (!root) return;
+    const el = root.querySelector(`[data-page="${n}"]`);
+    if (el && el.scrollIntoView) { pageRef.current = n; el.scrollIntoView({ behavior, block: "start" }); }
+  };
+
+  // scroll ke posisi halaman terakhir begitu layout siap
+  useEffect(() => {
+    if (phase === "ready" && viewW > 0 && initPageRef.current) {
+      const n = initPageRef.current; initPageRef.current = null;
+      requestAnimationFrame(() => scrollToPage(n, "auto"));
+    }
+  }, [phase, viewW]);
+
+  // jaga halaman aktif tetap terlihat saat zoom berubah
+  useEffect(() => {
+    if (phase !== "ready") return;
+    const n = pageRef.current;
+    requestAnimationFrame(() => scrollToPage(n, "auto"));
+  }, [zoom]);
 
   // simpan posisi halaman terakhir
   useEffect(() => {
     if (phase === "ready" && tokenRef.current) { try { sessionStorage.setItem("mr-hb-page-" + tokenRef.current, String(page)); } catch (e) {} }
   }, [page, phase]);
 
-  const goPage = (n) => { const c = clampPage(n); setPage(c); setPageInput(String(c)); setShowResults(false); if (scrollRef.current) scrollRef.current.scrollTop = 0; };
-
-  // ── scroll untuk pindah halaman (opsi ke-2 selain tombol) ──
-  const atTop = () => { const el = scrollRef.current; return !!el && el.scrollTop <= 2; };
-  const atBottom = () => { const el = scrollRef.current; return !!el && el.scrollTop + el.clientHeight >= el.scrollHeight - 2; };
-  const flip = (dir) => {
-    if (flipRef.current.cd) return;
-    const target = page + dir;
-    if (target < 1 || target > numPages) return;
-    flipRef.current.cd = true;
-    pendingScrollRef.current = dir > 0 ? "top" : "bottom"; // lompat halaman: mulai dari atas / lanjut dari bawah
-    goPage(target);
-    setTimeout(() => { flipRef.current.cd = false; flipRef.current.accum = 0; }, 450);
-  };
-  const onWheel = (e) => {
-    if (e.deltaY > 0 && atBottom()) { flipRef.current.accum += e.deltaY; if (flipRef.current.accum > 40) flip(1); }
-    else if (e.deltaY < 0 && atTop()) { flipRef.current.accum += e.deltaY; if (flipRef.current.accum < -40) flip(-1); }
-    else flipRef.current.accum = 0;
-  };
+  const goPage = (n) => { const c = clampPage(n); setShowResults(false); pageRef.current = c; setPage(c); setPageInput(String(c)); scrollToPage(c, "smooth"); };
   const commitInput = () => { const n = parseInt(pageInput, 10); if (!isNaN(n)) goPage(n); else setPageInput(String(page)); };
 
   // hasil pencarian
@@ -1720,7 +1775,6 @@ function HandbookPage({ open, onClose, isMgr }) {
     // reset cache versi lama + muat ulang versi baru
     cancelRef.current = true;
     try { const old = tokenRef.current; if (old) { sessionStorage.removeItem("mr-hb-idx-" + old); sessionStorage.removeItem("mr-hb-page-" + old); } } catch (er) {}
-    if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (er) {} }
     try { if (pdfRef.current && pdfRef.current.destroy) pdfRef.current.destroy(); } catch (er) {}
     pdfRef.current = null; loadedRef.current = false;
     setQuery(""); setShowResults(false); setShowToc(false);
@@ -1729,22 +1783,11 @@ function HandbookPage({ open, onClose, isMgr }) {
     alert("Handbook berhasil diperbarui ✔");
   };
 
-  // pinch-to-zoom (bonus)
+  // pinch-to-zoom (dua jari); satu jari = scroll biasa (continuous)
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-  const onTouchStart = (e) => {
-    if (e.touches.length === 2) { pinchRef.current = { d: dist(e.touches), z: zoom }; touchYRef.current = null; }
-    else if (e.touches.length === 1) { touchYRef.current = { y: e.touches[0].clientY, top: atTop(), bottom: atBottom() }; }
-  };
+  const onTouchStart = (e) => { if (e.touches.length === 2) pinchRef.current = { d: dist(e.touches), z: zoom }; };
   const onTouchMove = (e) => { if (e.touches.length === 2 && pinchRef.current) { const nz = Math.max(0.6, Math.min(4, pinchRef.current.z * (dist(e.touches) / pinchRef.current.d))); setZoom(nz); } };
-  const onTouchEnd = (e) => {
-    pinchRef.current = null;
-    const t = touchYRef.current; touchYRef.current = null;
-    if (!t) return;
-    const endY = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : t.y;
-    const dy = t.y - endY; // + = geser ke atas (mau halaman berikutnya), - = geser ke bawah
-    if (dy > 55 && (t.bottom || atBottom())) flip(1);
-    else if (dy < -55 && (t.top || atTop())) flip(-1);
-  };
+  const onTouchEnd = () => { pinchRef.current = null; };
 
   const updatedLabel = meta && meta.updatedAt ? new Date(meta.updatedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : null;
 
@@ -1795,10 +1838,10 @@ function HandbookPage({ open, onClose, isMgr }) {
         )}
       </div>
 
-      {/* viewer */}
-      <div ref={scrollRef} className="flex-1 overflow-auto flex items-start justify-center p-3" onClick={() => setShowResults(false)} onWheel={onWheel} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      {/* viewer — continuous scroll (semua halaman menyambung, virtualisasi) */}
+      <div ref={scrollRef} className="flex-1 overflow-auto" onClick={() => setShowResults(false)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         {phase === "loading" && (
-          <div className="w-full max-w-[520px] mt-6">
+          <div className="w-full max-w-[520px] mx-auto mt-6 px-3">
             <div className="s-soft rounded-xl animate-pulse" style={{ aspectRatio: "1 / 1.414" }} />
             <p className="text-center text-sm s-muted mt-4 flex items-center justify-center gap-2"><Loader2 size={15} className="animate-spin" /> Memuat handbook…</p>
           </div>
@@ -1812,7 +1855,13 @@ function HandbookPage({ open, onClose, isMgr }) {
             {!isMgr && <p className="text-xs s-muted mt-3">Hubungi admin untuk mengunggah handbook.</p>}
           </div>
         )}
-        {phase === "ready" && <canvas ref={canvasRef} className="rounded-lg shadow-lg s-border border max-w-none" />}
+        {phase === "ready" && viewW > 0 && (
+          <div className="px-3 py-3" style={{ width: "max-content", minWidth: "100%" }}>
+            {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
+              <HbPage key={n} pdf={pdfRef.current} num={n} cssWidth={Math.round(viewW * zoom)} baseRatio={baseRatio} shouldRender={renderSet.has(n)} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* bottom nav + zoom */}
