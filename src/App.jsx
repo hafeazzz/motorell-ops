@@ -218,7 +218,7 @@ function fixSaleBonus(s) {
 const Card = ({ children, className = "" }) => <div className={`s-surface s-border border rounded-2xl ${className}`}>{children}</div>;
 const Fade = ({ delay = 0, children }) => <div className="mr-fade" style={{ animationDelay: `${delay}ms` }}>{children}</div>;
 const Btn = ({ children, onClick, variant = "primary", className = "", disabled }) => {
-  const st = { primary: "bg-orange-500 text-white shadow-lg shadow-orange-500/30", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
+  const st = { primary: "bg-orange-500 text-white shadow-lg shadow-orange-500/40 mr-glow", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
   return <button type="button" onClick={onClick} disabled={disabled} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-40 ${st[variant]} ${className}`}>{children}</button>;
 };
 const Field = ({ label, children }) => <label className="block mb-3"><span className="text-xs font-semibold s-muted mb-1 block">{label}</span>{children}</label>;
@@ -376,7 +376,7 @@ function MotorellOps() {
   const [me, setMe] = useState(null);
   const [tab, setTab] = useState("home");
   const [dir, setDir] = useState(1);
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(true); // dark-first (tema black granite); ditimpa preferensi tersimpan
   const [profile, setProfile] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [handbookOpen, setHandbookOpen] = useState(false);
@@ -424,7 +424,7 @@ function MotorellOps() {
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     if (me && notifOK() && Notification.permission === "granted") enablePush(me.id);
   }, [me && me.id]);
-  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); const c3 = fixSaleBonus(next); if (changed || c2 || c3) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); if (r && r.value) setDark(r.value === "1"); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
+  useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); const c3 = fixSaleBonus(next); if (changed || c2 || c3) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); setDark(r && r.value ? r.value === "1" : true); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
     if (!window.storage || !window.storage.subscribe) return;
     const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then((s) => { setState(s); setMe((m) => (m ? (s.users.find((u) => u.id === m.id) || m) : m)); }); });
@@ -462,16 +462,21 @@ function MotorellOps() {
     <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
 .mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
-.mr-app.dark{--bg:#070910;--surface:#0e131f;--soft:#161d2c;--border:#242d40;--text:#eef2fb;--muted:#93a3c1;--header:#05070d}
+.mr-app.dark{--bg:#050506;--surface:#0c0d11;--soft:#14161c;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#020203}
 .s-bg{background:var(--bg)}.s-surface{background:var(--surface)}.s-soft{background:var(--soft)}.s-border{border-color:var(--border)}.s-text{color:var(--text)}.s-muted{color:var(--muted)}
 .mr-nav{background:var(--surface);background:color-mix(in srgb,var(--surface) 74%,transparent);border-top:1px solid var(--border);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px)}
 @media(min-width:768px){.mr-nav{border-top:none;border:1px solid rgba(226,232,240,.85);background:rgba(255,255,255,.7);-webkit-backdrop-filter:saturate(1.7) blur(20px);backdrop-filter:saturate(1.7) blur(20px);box-shadow:0 18px 50px rgba(2,6,23,.16)}.mr-app.dark .mr-nav{border:1px solid rgba(255,255,255,.1);background:rgba(14,19,31,.62);box-shadow:0 18px 50px rgba(0,0,0,.6)}}
 /* ===== premium cinematic (dari referensi desain) ===== */
-.mr-header{background:linear-gradient(150deg,#0a1122 0%,var(--header) 56%,#0a0e18 100%);position:relative;overflow:hidden}
-.mr-header::before{content:"";position:absolute;top:-45%;right:-8%;width:68%;height:190%;background:radial-gradient(closest-side,rgba(249,115,22,.30),transparent 70%);pointer-events:none}
-.mr-header::after{content:"";position:absolute;left:-14%;bottom:-70%;width:56%;height:170%;background:radial-gradient(closest-side,rgba(56,189,248,.15),transparent 72%);pointer-events:none}
+.mr-header{background:linear-gradient(155deg,#101216 0%,var(--header) 58%,#050506 100%);position:relative;overflow:hidden}
+.mr-header::before{content:"";position:absolute;top:-50%;right:-8%;width:72%;height:210%;background:radial-gradient(closest-side,rgba(249,115,22,.42),transparent 70%);pointer-events:none}
+.mr-header::after{content:"";position:absolute;left:-14%;bottom:-75%;width:58%;height:180%;background:radial-gradient(closest-side,rgba(56,189,248,.16),transparent 72%);pointer-events:none}
 .mr-header>*{position:relative;z-index:1}
 .mr-header button{-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
+/* ===== BLACK GRANITE: tekstur grain + permukaan batu dipoles ===== */
+.mr-app.dark.s-bg,.mr-app.dark .s-bg{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.26'/%3E%3C/svg%3E")}
+.mr-app.dark .s-surface{background-image:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0) 42%);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 34px -20px rgba(0,0,0,.85)}
+.mr-app.dark .mr-header{box-shadow:0 18px 46px -22px rgba(0,0,0,.9),inset 0 -1px 0 rgba(255,255,255,.05)}
+.mr-navon svg{filter:drop-shadow(0 0 9px rgba(249,115,22,.7))!important}
 .mr-display{font-weight:800;letter-spacing:-.025em;line-height:1.03}
 .mr-glow{box-shadow:0 10px 30px -8px rgba(249,115,22,.55)}
 .mr-textglow{text-shadow:0 0 24px rgba(249,115,22,.4)}
