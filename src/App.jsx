@@ -6,7 +6,7 @@ import {
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
   MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge,
-  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown
+  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -154,6 +154,7 @@ const seed = () => ({
   attendance: [], lives: [], extras: [], chat: [],
   media: [],
   tasks: [],
+  inspections: [],
 });
 
 /* ============ Storage ============ */
@@ -170,6 +171,7 @@ function normalize(s) {
     media: arr(s.media, []),
     tasks: arr(s.tasks, []),
     chat: arr(s.chat, []),
+    inspections: arr(s.inspections, []),
   };
   out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
   out.units = out.units.map((u) => ({ investorCode: "", investorShare: 0, soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
@@ -218,7 +220,7 @@ function fixSaleBonus(s) {
 const Card = ({ children, className = "" }) => <div className={`s-surface s-border border rounded-2xl ${className}`}>{children}</div>;
 const Fade = ({ delay = 0, children }) => <div className="mr-fade" style={{ animationDelay: `${delay}ms` }}>{children}</div>;
 const Btn = ({ children, onClick, variant = "primary", className = "", disabled }) => {
-  const st = { primary: "bg-orange-500 text-white shadow-lg shadow-orange-500/40 mr-glow", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
+  const st = { primary: "ac-bg shadow-lg mr-glow", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
   return <button type="button" onClick={onClick} disabled={disabled} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-40 ${st[variant]} ${className}`}>{children}</button>;
 };
 const Field = ({ label, children }) => <label className="block mb-3"><span className="text-xs font-semibold s-muted mb-1 block">{label}</span>{children}</label>;
@@ -255,7 +257,7 @@ function WelcomeOverlay({ user, onDone }) {
           {sparks.map((p, i) => <span key={i} className="mrw-spark" style={{ width: p.s, height: p.s, background: p.c, "--dx": p.dx + "px", "--dy": p.dy + "px" }} />)}
           <img src={LOGO} alt="" className="mrw-logo h-12 relative z-10" draggable="false" />
         </div>
-        <div className="mrw-text -mt-3"><p className="text-orange-400/90 text-[10px] tracking-[0.35em] font-bold">{g.toUpperCase()}</p><p className="text-white text-2xl font-extrabold mt-1.5">{user.name}</p></div>
+        <div className="mrw-text -mt-3"><p className="text-white/80 text-[10px] tracking-[0.35em] font-bold">{g.toUpperCase()}</p><p className="text-white text-2xl font-extrabold mt-1.5">{user.name}</p></div>
       </div>
     </div>,
     document.body
@@ -317,7 +319,7 @@ function FunFX() {
           })}
           <div style={{ animation: "catPop .5s cubic-bezier(.16,1,.3,1) both" }} className="text-center">
             <div style={{ fontSize: 96 }}>🐱</div>
-            <div className="mt-2 inline-block bg-orange-500 text-white font-extrabold text-2xl px-6 py-2.5 rounded-full shadow-2xl">{party}</div>
+            <div className="mt-2 inline-block bg-white text-slate-900 font-extrabold text-2xl px-6 py-2.5 rounded-full shadow-2xl">{party}</div>
           </div>
         </div>
       )}
@@ -363,7 +365,7 @@ class ErrorBoundary extends React.Component {
           <p style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Ada error kecil</p>
           <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>Coba muat ulang halaman. Kalau tetap error, screenshot pesan di bawah buat dikirim ke Fathir.</p>
           <p style={{ fontSize: 11, color: "#64748b", background: "#0f172a", padding: 10, borderRadius: 10, marginBottom: 14, wordBreak: "break-word" }}>{String((this.state.err && (this.state.err.message || this.state.err)) || "Unknown error")}</p>
-          <button onClick={() => { try { location.reload(); } catch (e) { this.setState({ err: null }); } }} style={{ background: "#f97316", color: "#fff", border: 0, borderRadius: 12, padding: "10px 22px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Muat ulang</button>
+          <button onClick={() => { try { location.reload(); } catch (e) { this.setState({ err: null }); } }} style={{ background: "#334155", color: "#fff", border: 0, borderRadius: 12, padding: "10px 22px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Muat ulang</button>
         </div>
       </div>
     );
@@ -380,6 +382,8 @@ function MotorellOps() {
   const [profile, setProfile] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [handbookOpen, setHandbookOpen] = useState(false);
+  const [inspeksiOpen, setInspeksiOpen] = useState(false);
+  const [focusUnit, setFocusUnit] = useState(null); // buka detail unit di Keuangan dari alur Inspeksi
   const touch = useRef({ x: 0, y: 0 });
   const logoTaps = useRef(0); const logoTimer = useRef(null);
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
@@ -461,32 +465,38 @@ function MotorellOps() {
   return (
     <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
-.mr-app{--bg:#edf0f5;--surface:#ffffff;--soft:#eef1f6;--border:#e5e9f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
-.mr-app.dark{--bg:#08090c;--surface:#0d0e13;--soft:#15171e;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#040405}
+.mr-app{--bg:#edf0f5;--surface:#ffffff;--soft:#eef1f6;--border:#e5e9f0;--text:#0f172a;--muted:#64748b;--header:#0f172a;--accent:#1e293b;--accent-contrast:#ffffff}
+.mr-app.dark{--bg:#08090c;--surface:#0d0e13;--soft:#15171e;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#040405;--accent:#f5f7fa;--accent-contrast:#0b0c10}
+.ac-text{color:var(--accent)}
+.ac-bg{background:var(--accent);color:var(--accent-contrast)}
+.ac-border{border-color:var(--accent)}
+.ac-soft{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+.ac-knob{background:var(--accent-contrast)}
 .s-bg{background:var(--bg)}.s-surface{background:var(--surface);-webkit-backdrop-filter:saturate(1.5) blur(13px);backdrop-filter:saturate(1.5) blur(13px)}.s-soft{background:var(--soft)}.s-border{border-color:var(--border)}.s-text{color:var(--text)}.s-muted{color:var(--muted)}
 .mr-nav{background:var(--surface);background:color-mix(in srgb,var(--surface) 74%,transparent);border-top:1px solid var(--border);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px)}
 @media(min-width:768px){.mr-nav{border-top:none;border:1px solid rgba(226,232,240,.85);background:rgba(255,255,255,.7);-webkit-backdrop-filter:saturate(1.7) blur(20px);backdrop-filter:saturate(1.7) blur(20px);box-shadow:0 18px 50px rgba(2,6,23,.16)}.mr-app.dark .mr-nav{border:1px solid rgba(255,255,255,.1);background:rgba(14,19,31,.62);box-shadow:0 18px 50px rgba(0,0,0,.6)}}
 /* ===== premium cinematic (dari referensi desain) ===== */
 .mr-header{background-image:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.07) 48%,transparent 56%),linear-gradient(155deg,#111318 0%,var(--header) 58%,#050506 100%);background-size:260% 100%,100% 100%;background-repeat:no-repeat;background-position:150% 0,0 0;position:relative;overflow:hidden;animation:mrHeaderSheen 7.5s ease-in-out 1s infinite}
 @keyframes mrHeaderSheen{0%{background-position:150% 0,0 0}45%{background-position:-80% 0,0 0}100%{background-position:-80% 0,0 0}}
-.mr-header::before{content:"";position:absolute;top:-50%;right:-8%;width:72%;height:210%;background:radial-gradient(closest-side,rgba(249,115,22,.42),transparent 70%);pointer-events:none}
-.mr-header::after{content:"";position:absolute;left:-14%;bottom:-75%;width:58%;height:180%;background:radial-gradient(closest-side,rgba(56,189,248,.16),transparent 72%);pointer-events:none}
+.mr-header::before{content:"";position:absolute;top:-50%;right:-8%;width:72%;height:210%;background:radial-gradient(closest-side,rgba(255,255,255,.13),transparent 70%);pointer-events:none}
+.mr-header::after{content:"";position:absolute;left:-14%;bottom:-75%;width:58%;height:180%;background:radial-gradient(closest-side,rgba(255,255,255,.06),transparent 72%);pointer-events:none}
 .mr-header>*{position:relative;z-index:1}
 /* ===== BLACK GRANITE (dark) — hitam elegan berkedalaman + grain + kaca ===== */
 .mr-app.dark.s-bg,.mr-app.dark .s-bg{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.2'/%3E%3C/svg%3E"),radial-gradient(125% 85% at 50% -12%,#16181f 0%,#0b0c11 44%,#070709 100%)}
 .mr-app.dark .s-surface{background-color:rgba(15,16,22,.66);background-image:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,0) 44%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 18px 42px -22px rgba(0,0,0,.92)}
 .mr-app.dark .mr-header{box-shadow:0 18px 46px -22px rgba(0,0,0,.9),inset 0 -1px 0 rgba(255,255,255,.06)}
-.mr-navon svg{filter:drop-shadow(0 0 9px rgba(249,115,22,.7))!important}
+.mr-navon svg{filter:drop-shadow(0 0 9px rgba(255,255,255,.6))!important}
 /* ===== LIGHT — pearl elegan + kaca lembut ===== */
 .mr-app:not(.dark).s-bg,.mr-app:not(.dark) .s-bg{background-color:var(--bg);background-image:radial-gradient(120% 82% at 50% -10%,#ffffff 0%,#eef1f6 46%,#e4e8f0 100%)}
-.mr-app:not(.dark) .s-surface{background-color:rgba(255,255,255,.7);box-shadow:0 14px 36px -18px rgba(15,23,42,.22),inset 0 1px 0 rgba(255,255,255,.95)}
+.mr-app:not(.dark) .s-surface{background-color:rgba(255,255,255,.72);background-image:linear-gradient(180deg,rgba(255,255,255,.7),rgba(244,247,251,0) 58%);box-shadow:0 14px 36px -18px rgba(15,23,42,.22),inset 0 1px 0 rgba(255,255,255,.95)}
 .mr-display{font-weight:800;letter-spacing:-.025em;line-height:1.03}
-.mr-glow{box-shadow:0 10px 30px -8px rgba(249,115,22,.55)}
-.mr-textglow{text-shadow:0 0 24px rgba(249,115,22,.4)}
+.mr-glow{box-shadow:0 10px 26px -10px rgba(0,0,0,.5)}
+.mr-app.dark .mr-glow{box-shadow:0 10px 30px -8px rgba(255,255,255,.14)}
+.mr-textglow{text-shadow:0 0 24px rgba(255,255,255,.22)}
 .mr-hero-glow{position:relative}
 .mr-hero-glow::before{content:"";position:absolute;inset:-30% -20% auto -20%;height:220px;background:radial-gradient(60% 100% at 30% 0%,rgba(249,115,22,.20),transparent 70%);pointer-events:none;z-index:0}
 .mr-app.dark .mr-hero-glow::before{background:radial-gradient(60% 100% at 30% 0%,rgba(249,115,22,.26),transparent 70%)}
-.s-input{background:var(--soft);border:1px solid var(--border);color:var(--text)}.s-input::placeholder{color:var(--muted);opacity:.8}.s-input:focus{outline:none;border-color:#fb923c}
+.s-input{background:var(--soft);border:1px solid var(--border);color:var(--text)}.s-input::placeholder{color:var(--muted);opacity:.8}.s-input:focus{outline:none;border-color:var(--accent)}
 .tg-emerald{background:#ecfdf5;color:#047857}.tg-rose{background:#fff1f2;color:#e11d48}.tg-amber{background:#fffbeb;color:#b45309}.tg-slate{background:#f1f5f9;color:#64748b}.tg-blue{background:#eff6ff;color:#2563eb}.tg-purple{background:#faf5ff;color:#9333ea}
 .mr-app.dark .tg-emerald{background:rgba(16,185,129,.16);color:#6ee7b7}.mr-app.dark .tg-rose{background:rgba(244,63,94,.16);color:#fda4af}.mr-app.dark .tg-amber{background:rgba(245,158,11,.16);color:#fcd34d}.mr-app.dark .tg-slate{background:rgba(148,163,184,.16);color:#cbd5e1}.mr-app.dark .tg-blue{background:rgba(59,130,246,.16);color:#93c5fd}.mr-app.dark .tg-purple{background:rgba(168,85,247,.16);color:#d8b4fe}
 @keyframes mrFade{from{opacity:0}to{opacity:1}}.mr-fade{animation:mrFade .5s ease both}
@@ -552,15 +562,15 @@ button:active{transform:scale(.97)}
       <main className="px-4 -mt-3 overflow-hidden">
         {notifPerm === "default" && (
           <div className="pt-6 pb-1"><Card className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: "#f9731622" }}><Bell size={18} className="text-orange-500" /></div>
+            <div className="w-9 h-9 rounded-xl grid place-items-center shrink-0 ac-soft"><Bell size={18} className="ac-text" /></div>
             <div className="flex-1 min-w-0"><p className="text-sm font-semibold leading-tight">Aktifkan notifikasi</p><p className="text-[11px] s-muted leading-tight mt-0.5">Biar dapat pemberitahuan task baru & chat masuk.</p></div>
             <Btn onClick={askNotif} className="!px-3 !py-2 shrink-0 text-xs">Aktifkan</Btn>
           </Card></div>
         )}
         <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
-          {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} />}
+          {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} onInspeksi={() => setInspeksiOpen(true)} />}
           {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
-          {tab === "uang" && <UangTab state={state} me={me} update={update} />}
+          {tab === "uang" && <UangTab state={state} me={me} update={update} onInspeksi={() => setInspeksiOpen(true)} focusUnit={focusUnit} onFocusConsumed={() => setFocusUnit(null)} />}
           {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "task" && (isOwner ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
           {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} />}
@@ -573,7 +583,7 @@ button:active{transform:scale(.97)}
           const Ic = t.icon; const on = tab === t.id;
           const badge = t.id === "task" ? state.tasks.filter((x) => x.userId === me.id && !x.done).length : 0;
           return (
-            <button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 md:gap-1 py-1 md:py-1.5 rounded-xl flex-1 active:scale-90 transition ${on ? "text-orange-500" : "s-muted"}`}>
+            <button key={t.id} onClick={() => goTab(t.id)} className={`flex flex-col items-center gap-0.5 md:gap-1 py-1 md:py-1.5 rounded-xl flex-1 active:scale-90 transition ${on ? "ac-text" : "s-muted"}`}>
               <div className={`relative ${on ? "mr-navon" : ""}`}><Ic size={19} strokeWidth={on ? 2.5 : 2} />{badge > 0 && <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold rounded-full min-w-[15px] h-[15px] px-0.5 grid place-items-center leading-none">{badge > 9 ? "9+" : badge}</span>}</div>
               <span className="text-[9px] md:text-[11px] font-semibold">{t.label}</span>
             </button>
@@ -583,6 +593,7 @@ button:active{transform:scale(.97)}
 
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} chatTick={chatTick} />
       <HandbookPage open={handbookOpen} onClose={() => setHandbookOpen(false)} isMgr={isMgr} />
+      <InspeksiPage open={inspeksiOpen} onClose={() => setInspeksiOpen(false)} me={me} update={update} state={state} onOpenUnit={(id) => { setInspeksiOpen(false); goTab("uang"); setFocusUnit(id); }} />
       <FunFX />
       {welcome && <WelcomeOverlay user={welcome} onDone={() => setWelcome(null)} />}
 
@@ -592,8 +603,8 @@ button:active{transform:scale(.97)}
 }
 
 /* ============ Auth ============ */
-// Background bara api interaktif: percikan hangat melayang naik & berpijar, lalu buyar saat disapu kursor/sentuhan.
-function EmberField() {
+// (Dinonaktifkan) Animasi bara api login dihapus — login kini pakai gradient netral polos.
+function EmberField() { return null; // eslint-disable-line
   const ref = useRef(null);
   useEffect(() => {
     const canvas = ref.current; if (!canvas) return;
@@ -657,11 +668,10 @@ function Auth({ state, onLogin, update }) {
     } else { pw === sel.password ? onLogin(sel) : setErr("Password salah."); }
   };
   return (
-    <div className="min-h-screen bg-slate-950 text-white grid place-items-center p-6 relative overflow-hidden">
-      <EmberField />
+    <div className="mr-app dark min-h-screen text-white grid place-items-center p-6 relative overflow-hidden" style={{ background: "linear-gradient(160deg,#0c0d12 0%,#14161d 55%,#050608 100%)" }}>
       <div className="w-full max-w-sm relative z-10">
         <img src={LOGO} alt="Motorell" className="h-10 mx-auto mb-1" />
-        <p className="text-center text-orange-400 font-bold tracking-[0.3em] text-xs mb-8">OPS</p>
+        <p className="text-center text-white/80 font-bold tracking-[0.3em] text-xs mb-8">OPS</p>
         {!sel ? (
           <>
             <p className="text-center text-slate-400 text-sm mb-6">Pilih akun buat masuk</p>
@@ -670,7 +680,7 @@ function Auth({ state, onLogin, update }) {
                 <button key={u.id} onClick={() => setSel(u)} className="w-full flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl px-4 py-3 text-left transition">
                   <Avatar user={u} size={40} />
                   <div className="flex-1"><p className="font-semibold">{u.name}</p><p className="text-xs text-slate-400">{u.position}</p></div>
-                  {u.role === "owner" && <ShieldCheck size={18} className="text-orange-400" />}
+                  {u.role === "owner" && <ShieldCheck size={18} className="text-white/80" />}
                   {u.role === "admin" && <ShieldCheck size={18} className="text-blue-400" />}
                 </button>
               ))}
@@ -681,10 +691,10 @@ function Auth({ state, onLogin, update }) {
             <button onClick={back} className="flex items-center gap-1 text-slate-400 text-sm mb-5"><ArrowLeft size={16} /> Ganti akun</button>
             <div className="flex items-center gap-3 mb-5"><Avatar user={sel} size={44} /><div><p className="font-semibold">{sel.name}</p><p className="text-xs text-slate-400">{sel.position}</p></div></div>
             {firstTime && <p className="text-xs text-amber-400 mb-3 bg-amber-400/10 rounded-xl px-3 py-2">Login pertama — buat password kamu sendiri.</p>}
-            <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && !firstTime && submit()} placeholder={firstTime ? "Buat password baru" : "Masukkan password"} className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-orange-400" /></div>
-            {firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-orange-400" /></div>}
+            <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && !firstTime && submit()} placeholder={firstTime ? "Buat password baru" : "Masukkan password"} className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>
+            {firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>}
             {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
-            <Btn onClick={submit} className="w-full">{firstTime ? "Buat & masuk" : "Masuk"}</Btn>
+            <button onClick={submit} className="w-full py-3 rounded-xl font-bold bg-white text-slate-900 active:scale-[.98] transition">{firstTime ? "Buat & masuk" : "Masuk"}</button>
             {!firstTime && sel.role === "staff" && <p className="text-center text-xs text-slate-500 mt-4">Lupa password? Minta owner reset lewat menu <b className="text-slate-300">Tim</b>.</p>}
           </div>
         )}
@@ -754,16 +764,16 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
       <div className="flex flex-col items-center gap-3 mb-5">
         <Avatar user={me} size={84} />
         <input ref={ref} type="file" accept="image/*" className="hidden" onChange={pick} />
-        <button onClick={() => ref.current && ref.current.click()} className="text-orange-500 text-sm font-semibold flex items-center gap-1"><ImagePlus size={15} />Ganti foto dari galeri</button>
+        <button onClick={() => ref.current && ref.current.click()} className="ac-text text-sm font-semibold flex items-center gap-1"><ImagePlus size={15} />Ganti foto dari galeri</button>
         <div className="text-center"><p className="font-bold">{me.name}</p><p className="text-xs s-muted">{me.position}</p></div>
       </div>
       <div className="flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-3">
         <span className="text-sm font-semibold flex items-center gap-2">{dark ? <Moon size={16} /> : <Sun size={16} />}Mode gelap</span>
-        <button onClick={toggleDark} className={`w-12 h-7 rounded-full p-1 transition ${dark ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${dark ? "translate-x-5" : ""}`} /></button>
+        <button onClick={toggleDark} className={`w-12 h-7 rounded-full p-1 transition ${dark ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${dark ? "translate-x-5" : ""}`} /></button>
       </div>
       <div className="flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-3">
         <span className="text-sm font-semibold flex items-center gap-2">{snd ? <Volume2 size={16} /> : <VolumeX size={16} />}Suara klik</span>
-        <button onClick={() => { SOUND_ON = !snd; setSnd(SOUND_ON); window.storage.set("motorell-sound", SOUND_ON ? "1" : "0").catch(() => {}); }} className={`w-12 h-7 rounded-full p-1 transition ${snd ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${snd ? "translate-x-5" : ""}`} /></button>
+        <button onClick={() => { SOUND_ON = !snd; setSnd(SOUND_ON); window.storage.set("motorell-sound", SOUND_ON ? "1" : "0").catch(() => {}); }} className={`w-12 h-7 rounded-full p-1 transition ${snd ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${snd ? "translate-x-5" : ""}`} /></button>
       </div>
       <div className="s-soft rounded-xl px-4 py-3 mb-3">
         <button onClick={() => { setPwOpen((o) => !o); setPwMsg(null); }} className="w-full flex items-center justify-between text-sm font-semibold"><span className="flex items-center gap-2"><Lock size={16} />Ganti password</span><ChevronRight size={16} className={`transition ${pwOpen ? "rotate-90" : ""}`} /></button>
@@ -800,55 +810,47 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
 function expByUnit(state, unitId) { return state.expenses.filter((e) => e.unitId === unitId).reduce((a, e) => a + e.amount, 0); }
 
 // Banner sapaan dengan aurora cahaya yang mengalir; cahayanya condong ke arah kursor/sentuhan.
+// Hero sapaan dengan latar dinamis mengikuti waktu WIB (gaya widget cuaca iOS) — Tugas 6.
 function GreetingBanner({ children }) {
-  const wrapRef = useRef(null); const cvRef = useRef(null);
+  const { h, m } = wibParts(); const mins = h * 60 + m;
+  const phase = mins >= 240 && mins <= 659 ? "pagi" : mins >= 660 && mins <= 899 ? "siang" : mins >= 900 && mins <= 1109 ? "sore" : "malam";
+  const BG = {
+    pagi: "linear-gradient(160deg,#8ec5e8 0%,#bcd9ec 42%,#ffe1b3 100%)",
+    siang: "linear-gradient(160deg,#3f95dd 0%,#74baed 55%,#c6e5f8 100%)",
+    sore: "linear-gradient(160deg,#2c2350 0%,#b0596d 50%,#f2ab5b 100%)",
+    malam: "linear-gradient(160deg,#0a1730 0%,#122a54 55%,#1d3970 100%)",
+  }[phase];
+  const cvRef = useRef(null);
   useEffect(() => {
-    const wrap = wrapRef.current, canvas = cvRef.current; if (!wrap || !canvas) return;
+    if (phase !== "malam") return; // taburan bintang hanya malam, ringan
+    const canvas = cvRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
-    const mouse = { x: 0.5, y: 0.5, active: false };
-    let w = 0, h = 0, raf = 0, t = 0;
-    const blobs = [
-      { c: "249,115,22", ax: 0.32, ay: 0.42, sx: 0.0042, sy: 0.0061, r: 0.62, f: 0.05 },
-      { c: "244,63,94", ax: 0.36, ay: 0.30, sx: 0.0055, sy: 0.0037, r: 0.55, f: 0.0 },
-      { c: "251,191,36", ax: 0.40, ay: 0.34, sx: 0.0031, sy: 0.0072, r: 0.5, f: 0.06 },
-      { c: "168,85,247", ax: 0.30, ay: 0.40, sx: 0.0067, sy: 0.0048, r: 0.46, f: 0.0 },
-    ];
-    const resize = () => { w = wrap.clientWidth; h = wrap.clientHeight; canvas.width = w * DPR; canvas.height = h * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); };
-    const tick = () => {
-      t += 1; ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "#0b1020"; ctx.fillRect(0, 0, w, h);
-      ctx.globalCompositeOperation = "lighter";
-      blobs.forEach((b, i) => {
-        let bx = (0.5 + Math.sin(t * b.sx + i) * b.ax) * w;
-        let by = (0.5 + Math.cos(t * b.sy + i * 1.7) * b.ay) * h;
-        if (mouse.active) { bx += (mouse.x * w - bx) * b.f; by += (mouse.y * h - by) * b.f; }
-        const rad = b.r * Math.max(w, h);
-        const g = ctx.createRadialGradient(bx, by, 0, bx, by, rad);
-        g.addColorStop(0, `rgba(${b.c},0.5)`); g.addColorStop(1, `rgba(${b.c},0)`);
-        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-      });
-      ctx.globalCompositeOperation = "source-over";
-      raf = requestAnimationFrame(tick);
-    };
-    const onMove = (e) => { const r = canvas.getBoundingClientRect(); const tch = e.touches && e.touches[0]; const cx = (tch ? tch.clientX : e.clientX) - r.left, cy = (tch ? tch.clientY : e.clientY) - r.top; mouse.x = Math.max(0, Math.min(1, cx / r.width)); mouse.y = Math.max(0, Math.min(1, cy / r.height)); mouse.active = true; };
-    const onLeave = () => { mouse.active = false; };
-    resize(); tick();
-    window.addEventListener("resize", resize);
-    wrap.addEventListener("mousemove", onMove);
-    wrap.addEventListener("touchmove", onMove, { passive: true });
-    wrap.addEventListener("mouseleave", onLeave);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); wrap.removeEventListener("mousemove", onMove); wrap.removeEventListener("touchmove", onMove); wrap.removeEventListener("mouseleave", onLeave); };
-  }, []);
+    let w = 0, h2 = 0, raf = 0, stars = [], t = 0;
+    const resize = () => { w = canvas.clientWidth; h2 = canvas.clientHeight; canvas.width = w * DPR; canvas.height = h2 * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); stars = Array.from({ length: Math.min(60, Math.round(w * h2 / 2600)) }, () => ({ x: Math.random() * w, y: Math.random() * h2 * 0.82, r: Math.random() * 1.1 + 0.4, p: Math.random() * 6.28, s: 0.6 + Math.random() * 1.6 })); };
+    const tick = () => { t += 0.05; ctx.clearRect(0, 0, w, h2); for (const st of stars) { const a = 0.35 + Math.sin(t * st.s + st.p) * 0.35; ctx.globalAlpha = Math.max(0, a); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, 6.283); ctx.fill(); } ctx.globalAlpha = 1; raf = requestAnimationFrame(tick); };
+    resize(); tick(); window.addEventListener("resize", resize);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, [phase]);
+  const sun = phase === "malam" ? null : (
+    <div className="absolute rounded-full pointer-events-none" style={{
+      ...(phase === "pagi" ? { right: 26, bottom: -30, width: 120, height: 120 } : phase === "siang" ? { right: 24, top: -34, width: 120, height: 120 } : { left: -18, bottom: -36, width: 150, height: 150 }),
+      background: phase === "sore" ? "radial-gradient(circle,#ffd48a 0%,rgba(255,170,90,.7) 42%,transparent 70%)" : "radial-gradient(circle,#fff7db 0%,rgba(255,241,186,.85) 40%,transparent 70%)",
+      filter: "blur(2px)",
+    }} />
+  );
+  const moon = phase === "malam" ? (
+    <div className="absolute rounded-full pointer-events-none" style={{ right: 28, top: -22, width: 72, height: 72, background: "radial-gradient(circle at 62% 38%,#f4f6ff 0%,#d9e0f0 55%,transparent 72%)", boxShadow: "0 0 34px rgba(210,224,255,.45)" }} />
+  ) : null;
   return (
-    <div ref={wrapRef} className="relative overflow-hidden rounded-3xl">
-      <canvas ref={cvRef} className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }} />
-      <div className="mr-shine absolute inset-0 z-[5]" style={{ pointerEvents: "none" }} />
-      <div className="relative z-10 px-5 py-6" style={{ textShadow: "0 1px 10px rgba(0,0,0,0.45)" }}>{children}</div>
+    <div className="relative overflow-hidden rounded-3xl shadow-[0_18px_40px_-18px_rgba(0,0,0,.55)]" style={{ background: BG }}>
+      {sun}{moon}
+      {phase === "malam" && <canvas ref={cvRef} className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }} />}
+      <div className="relative z-10 px-5 py-6" style={{ textShadow: "0 1px 12px rgba(0,0,0,0.5)" }}>{children}</div>
     </div>
   );
 }
-function HomeTab({ state, me, isOwner, go }) {
+function HomeTab({ state, me, isOwner, go, onInspeksi }) {
   const [, setTick] = useState(0);
   useEffect(() => { const iv = setInterval(() => setTick((t) => t + 1), 60000); return () => clearInterval(iv); }, []);
   const g = greeting();
@@ -871,14 +873,14 @@ function HomeTab({ state, me, isOwner, go }) {
       <Fade delay={120}>
         {isOwner ? (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <Stat label="Stok aktif" value={stokAktif} sub={`Terjual bulan ini: ${monthSold}`} icon={Bike} color="#f97316" />
+            <Stat label="Stok aktif" value={stokAktif} sub={`Terjual bulan ini: ${monthSold}`} icon={Bike} color="#f97316" valueColor="#f97316" />
             <Stat label="Hadir hari ini" value={todayAbsen.length} sub={`Dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
             <Stat label="Profit bulan ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" className="col-span-2 lg:col-span-1" />
           </div>
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <StatStaff label="Unit Dalam Proses" value={proses} icon={Bike} color="#f97316" />
+              <StatStaff label="Unit Dalam Proses" value={proses} icon={Bike} color="#64748b" />
               <StatStaff label="Konten Ter-upload" value={state.media.length} icon={Video} color="#3b82f6" />
             </div>
             <StatStaff label="Unit Terjual Bulan Ini" value={monthSold} icon={TrendingUp} color="#10b981" />
@@ -888,11 +890,11 @@ function HomeTab({ state, me, isOwner, go }) {
 
       {!isOwner && (me.saleBonus || extraTotal > 0) && (
         <Fade delay={180}>
-          <Card className="p-4 border-orange-200" >
-            <div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: "#f9731622" }}><Gift size={16} className="text-orange-500" /></div><div><p className="text-xs font-semibold s-muted">Extra cash kamu</p><p className="text-xl font-extrabold">{rp(extraTotal)}</p></div></div>
+          <Card className="p-4 ac-border" >
+            <div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center ac-soft"><Gift size={16} className="ac-text" /></div><div><p className="text-xs font-semibold s-muted">Extra cash kamu</p><p className="text-xl font-extrabold">{rp(extraTotal)}</p></div></div>
             <div className="space-y-1">
-              {me.saleBonus && <div className="flex justify-between text-xs s-muted"><span>Bonus penjualan ({monthSold} unit terjual bulan ini)</span><span className="font-bold text-orange-500">+{rp(saleBonus)}</span></div>}
-              {[...myExtras].reverse().slice(0, 4).map((x) => (<div key={x.id} className="flex justify-between text-xs s-muted"><span>{x.note || "Bonus"}</span><span className="font-bold text-orange-500">+{rp(x.amount)}</span></div>))}
+              {me.saleBonus && <div className="flex justify-between text-xs s-muted"><span>Bonus penjualan ({monthSold} unit terjual bulan ini)</span><span className="font-bold ac-text">+{rp(saleBonus)}</span></div>}
+              {[...myExtras].reverse().slice(0, 4).map((x) => (<div key={x.id} className="flex justify-between text-xs s-muted"><span>{x.note || "Bonus"}</span><span className="font-bold ac-text">+{rp(x.amount)}</span></div>))}
             </div>
           </Card>
         </Fade>
@@ -903,7 +905,7 @@ function HomeTab({ state, me, isOwner, go }) {
           <Card className="p-4">
             <p className="font-bold text-sm mb-2">Task kamu belum kelar ({myTasks.length})</p>
             <div className="space-y-1.5">{myTasks.slice(0, 3).map((t) => <div key={t.id} className="flex items-center gap-2 text-sm s-muted"><Circle size={14} /> {t.title}</div>)}</div>
-            <button onClick={() => go(isOwner ? "tim" : "task")} className="text-orange-500 text-xs font-bold mt-2">Lihat semua →</button>
+            <button onClick={() => go(isOwner ? "tim" : "task")} className="ac-text text-xs font-bold mt-2">Lihat semua →</button>
           </Card>
         </Fade>
       )}
@@ -914,6 +916,7 @@ function HomeTab({ state, me, isOwner, go }) {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             <Quick label="Absen masuk" icon={Clock} onClick={() => go("absen")} />
             <Quick label="Catat pengeluaran" icon={Wallet} onClick={() => go("uang")} />
+            <Quick label="Inspeksi motor" icon={ClipboardCheck} onClick={() => onInspeksi && onInspeksi()} />
             <Quick label="Upload konten" icon={Video} onClick={() => go("media")} />
             <Quick label={isOwner ? "Laporan bulanan" : "Task harian"} icon={isOwner ? PieIcon : CheckSquare} onClick={() => go(isOwner ? "laporan" : "task")} />
           </div>
@@ -922,14 +925,14 @@ function HomeTab({ state, me, isOwner, go }) {
     </div>
   );
 }
-const Stat = ({ label, value, sub, icon: Ic, color, small, className = "" }) => (
-  <Tilt className={`rounded-2xl h-full ${className}`}><Card className="p-3.5 h-full"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`}><CountVal v={value} /></p><p className="text-[11px] s-muted">{sub || label}</p></Card></Tilt>
+const Stat = ({ label, value, sub, icon: Ic, color, small, className = "", valueColor }) => (
+  <Tilt className={`rounded-2xl h-full ${className}`}><Card className="p-3.5 h-full"><div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className={`font-extrabold ${small ? "text-base" : "text-2xl"} leading-tight`} style={valueColor ? { color: valueColor } : {}}><CountVal v={value} /></p><p className="text-[11px] s-muted">{sub || label}</p></Card></Tilt>
 );
 const StatStaff = ({ label, value, icon: Ic, color }) => (
   <Tilt className="rounded-2xl h-full"><Card className="p-4 h-full"><div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: color + "22" }}><Ic size={16} style={{ color }} /></div><p className="text-xs font-semibold s-muted leading-tight">{label}</p></div><p className="text-3xl font-extrabold leading-none"><CountVal v={value} /></p></Card></Tilt>
 );
 const Quick = ({ label, icon: Ic, onClick }) => (
-  <Tilt className="rounded-xl"><button onClick={onClick} className="w-full h-full flex items-center gap-2 s-soft rounded-xl px-3 py-3 text-left"><Ic size={16} className="text-orange-500" /><span className="text-xs font-semibold">{label}</span></button></Tilt>
+  <Tilt className="rounded-xl"><button onClick={onClick} className="w-full h-full flex items-center gap-2 s-soft rounded-xl px-3 py-3 text-left"><Ic size={16} className="ac-text" /><span className="text-xs font-semibold">{label}</span></button></Tilt>
 );
 
 /* ============ Absensi ============ */
@@ -1000,9 +1003,10 @@ function LiveProof({ live, userName, setZoom }) {
 }
 
 /* ============ Keuangan ============ */
-function UangTab({ state, me, update }) {
+function UangTab({ state, me, update, onInspeksi, focusUnit, onFocusConsumed }) {
   const isMgr = me.role === "owner" || me.role === "admin";
   const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
+  useEffect(() => { if (focusUnit) { setDetail(focusUnit); onFocusConsumed && onFocusConsumed(); } }, [focusUnit]);
   const [q, setQ] = useState(""); const [fs, setFs] = useState("all");
   const [zoomU, setZoomU] = useState("");
   const photoFileRef = useRef(null); const photoForRef = useRef(null);
@@ -1014,15 +1018,15 @@ function UangTab({ state, me, update }) {
   const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "terjual", l: "Terjual" }];
   return (
     <div className="space-y-3 pt-3">
-      <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
+      <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><div className="flex items-center gap-2"><Btn variant="ghost" onClick={() => onInspeksi && onInspeksi()} className="!px-3 !py-2"><ClipboardCheck size={15} className="inline mr-1 -mt-0.5" />Inspeksi</Btn><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div></div>
       {state.units.length === 0 && <Card className="p-8 text-center"><div className="text-5xl mb-2 cat-wiggle">🐱</div><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
       {visible.length > 0 && (
         <div className="space-y-2">
           <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 s-muted" /><input className={inputCls + " !pl-9"} placeholder="Cari motor / plat…" value={q} onChange={(e) => setQ(e.target.value)} />{q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 s-muted"><X size={15} /></button>}</div>
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5">{FILTERS.map((ff) => <button key={ff.k} onClick={() => setFs(ff.k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${fs === ff.k ? "bg-orange-500 text-white" : "s-soft s-muted"}`}>{ff.l}</button>)}</div>
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5">{FILTERS.map((ff) => <button key={ff.k} onClick={() => setFs(ff.k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${fs === ff.k ? "ac-bg" : "s-soft s-muted"}`}>{ff.l}</button>)}</div>
         </div>
       )}
-      {archived > 0 && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="text-orange-500" />{archived} motor terjual bulan lalu diarsipkan — rekapnya ada di Laporan.</p>}
+      {archived > 0 && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="ac-text" />{archived} motor terjual bulan lalu diarsipkan — rekapnya ada di Laporan.</p>}
       {visible.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{filtered.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
@@ -1036,9 +1040,9 @@ function UangTab({ state, me, update }) {
             {u.photo ? (
               <img src={u.photo} onClick={() => setZoomU(u.photo)} className="w-full aspect-square object-cover rounded-xl mt-3 cursor-zoom-in" alt="" />
             ) : (
-              <button onClick={() => pickPhotoFor(u.id)} className="w-full mt-3 rounded-xl py-5 text-xs font-semibold s-muted s-soft border border-dashed s-border flex items-center justify-center gap-1.5"><Camera size={15} className="text-orange-500" />Tambah foto motor</button>
+              <button onClick={() => pickPhotoFor(u.id)} className="w-full mt-3 rounded-xl py-5 text-xs font-semibold s-muted s-soft border border-dashed s-border flex items-center justify-center gap-1.5"><Camera size={15} className="ac-text" />Tambah foto motor</button>
             )}
-            <div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} accent="#f97316" /><Read label="Total modal" value={rp(modal)} /></div>
+            <div className="grid grid-cols-3 gap-2 mt-3 text-center"><Read label="Modal beli" value={rp(u.buyPrice)} /><Read label="Pengeluaran" value={rp(exp)} /><Read label="Total modal" value={rp(modal)} /></div>
             <div className="flex items-center justify-between mt-3 pt-3 border-t s-border"><span className="text-xs s-muted">{u.sellPrice ? "Target jual " + rp(u.sellPrice) : "Belum ada harga jual"}</span>{isMgr && profit !== null && <span className={`text-sm font-extrabold flex items-center gap-1 ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{rp(profit)}</span>}</div>
             {isMgr && iCut !== null && (
               <div className="mt-2 text-[11px] s-soft rounded-lg px-3 py-2 space-y-0.5">
@@ -1050,7 +1054,7 @@ function UangTab({ state, me, update }) {
           </Card>
         );
       })}</div>
-      <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} />
+      <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} me={me} />
       <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
       <input ref={photoFileRef} type="file" accept="image/*" className="hidden" onChange={onCardPhoto} />
@@ -1073,9 +1077,23 @@ function DateBox({ label, value, onChange }) {
     </Field>
   );
 }
-function AddUnitModal({ open, onClose, update }) {
+// Buat unit motor baru + otomatis expense "Cek unit" Rp250.000 (kategori jasa) — Tugas 1.
+// Dipakai semua jalur pembuatan unit (form manual & alur Inspeksi) supaya konsisten.
+function createUnit(s, data, byId, presetId) {
+  const id = presetId || uid();
+  s.units.push({
+    id, name: data.name || "Motor baru", plate: data.plate || "",
+    buyPrice: +data.buyPrice || 0, sellPrice: +data.sellPrice || 0,
+    status: data.status || "proses", investorCode: (data.investorCode || "").trim(),
+    inDate: data.inDate || today(), soldAt: null, odometer: +data.odometer || 0,
+    ...(data.inspectionResult ? { inspectionResult: data.inspectionResult } : {}),
+  });
+  s.expenses.push({ id: uid(), unitId: id, cat: "jasa", amount: 250000, note: "Cek unit", by: byId || null, date: today() });
+  return id;
+}
+function AddUnitModal({ open, onClose, update, me }) {
   const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" });
-  const save = () => { if (!f.name) return; update((s) => { s.units.push({ id: uid(), name: f.name, plate: f.plate, buyPrice: +f.buyPrice || 0, sellPrice: +f.sellPrice || 0, status: "proses", investorCode: f.investorCode.trim(), inDate: f.inDate || today(), soldAt: null, odometer: +f.odometer || 0 }); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" }); onClose(); };
+  const save = () => { if (!f.name) return; update((s) => { createUnit(s, f, me && me.id); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" }); onClose(); };
   return (
     <Modal open={open} onClose={onClose} title="Tambah unit motor">
       <Field label="Nama / tipe motor"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Honda Beat 2019" /></Field>
@@ -1094,7 +1112,7 @@ function ExpenseModal({ data, units, me, onClose, update }) {
   const save = () => { if (!f.amount) return; update((s) => { if (editing) { const ex = s.expenses.find((x) => x.id === data.expense.id); ex.cat = f.cat; ex.amount = +f.amount; ex.note = f.note; } else s.expenses.push({ id: uid(), unitId: data.unitId, cat: f.cat, amount: +f.amount, note: f.note, by: me.id, date: today() }); return s; }); onClose(); };
   return (
     <Modal open={!!data} onClose={onClose} title={editing ? "Edit pengeluaran" : `Pengeluaran · ${unit?.name || ""}`}>
-      <Field label="Kategori"><div className="grid grid-cols-5 gap-1.5">{Object.entries(CATS).map(([k, c]) => { const Ic = c.icon; const on = f.cat === k; return <button key={k} onClick={() => setF({ ...f, cat: k })} className={`flex flex-col items-center gap-1 py-2 rounded-xl border text-[9px] font-semibold ${on ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}><Ic size={15} style={{ color: on ? "#f97316" : c.color }} />{c.label}</button>; })}</div></Field>
+      <Field label="Kategori"><div className="grid grid-cols-5 gap-1.5">{Object.entries(CATS).map(([k, c]) => { const Ic = c.icon; const on = f.cat === k; return <button key={k} onClick={() => setF({ ...f, cat: k })} className={`flex flex-col items-center gap-1 py-2 rounded-xl border text-[9px] font-semibold ${on ? "ac-border ac-soft" : "s-border s-muted"}`}><Ic size={15} style={{ color: c.color }} />{c.label}</button>; })}</div></Field>
       <Field label="Nominal (Rp)"><input type="number" className={inputCls} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="200000" /></Field>
       <Field label="Keterangan"><input className={inputCls} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder={CATS[f.cat].ph} /></Field>
       <Btn onClick={save} className="w-full mt-2">{editing ? "Simpan perubahan" : "Catat pengeluaran"}</Btn>
@@ -1128,6 +1146,17 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
   return (
     <Modal open={!!unitId} onClose={onClose} title="Detail unit">
       <p className="text-[11px] s-muted -mt-2 mb-3">Semua kolom bisa diedit kapan saja.</p>
+      {unit.inspectionResult && (() => {
+        const ir = unit.inspectionResult; const vals = Object.values(ir.items || {});
+        const cnt = (k) => vals.filter((v) => v && v.status === k).length;
+        return (
+          <div className="s-soft rounded-xl p-3 mb-3">
+            <p className="text-xs font-bold flex items-center gap-1.5 mb-1.5"><ClipboardCheck size={14} className="ac-text" />Hasil inspeksi</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold mb-1"><span className="text-emerald-500">Baik {cnt("baik")}</span><span className="text-amber-500">Perlu perhatian {cnt("perhatian")}</span><span className="text-rose-500">Bermasalah {cnt("masalah")}</span></div>
+            {ir.notes && <p className="text-[11px] s-muted break-words">Catatan: {ir.notes}</p>}
+          </div>
+        );
+      })()}
       <Field label="Nama motor"><input className={inputCls} defaultValue={unit.name} onBlur={(e) => setField("name", e.target.value)} /></Field>
       <Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
@@ -1144,7 +1173,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
             {share > 0 && (profit !== null ? (
               <div className="text-[11px] s-soft rounded-xl px-3 py-2.5 space-y-1 -mt-1">
                 <div className="flex justify-between gap-2"><span className="s-muted">Keuntungan motor ini</span><span className="font-semibold">{rp(profit)}</span></div>
-                <div className="flex justify-between gap-2"><span className="s-muted">Jatah investor ({share}%)</span><span className="font-semibold text-orange-500">{rp(iCut)}</span></div>
+                <div className="flex justify-between gap-2"><span className="s-muted">Jatah investor ({share}%)</span><span className="font-semibold ac-text">{rp(iCut)}</span></div>
                 <div className="flex justify-between gap-2 pt-1.5 border-t s-border"><span className="font-semibold">Keuntungan bersih ({100 - share}%)</span><span className="font-extrabold text-emerald-500">{rp(profit - iCut)}</span></div>
               </div>
             ) : <p className="text-[11px] s-muted -mt-1">Isi target harga jual dulu buat lihat pembagiannya.</p>)}
@@ -1159,7 +1188,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
         )}
         <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
       </div>
-      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{l}</button>)}</div></div>
+      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "ac-border ac-soft" : "s-border s-muted"}`}>{l}</button>)}</div></div>
       {Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
       <p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
       <div className="space-y-1.5 mb-4">{items.length === 0 && <p className="text-xs s-muted">Belum ada pengeluaran.</p>}{items.map((e) => <div key={e.id} className="flex items-center justify-between s-soft rounded-lg px-3 py-2"><div className="text-sm"><p className="font-medium">{e.note || CATS[e.cat].label}</p><p className="text-[10px] s-muted">{CATS[e.cat].label} · {userName(e.by)} · {e.date}</p></div><div className="flex items-center gap-2"><span className="text-sm font-bold">{rp(e.amount)}</span><button onClick={() => onEditExp(e)} className="s-muted"><Pencil size={14} /></button><button onClick={() => delExp(e.id)} className="text-rose-400"><Trash2 size={14} /></button></div></div>)}</div>
@@ -1204,7 +1233,7 @@ function MediaTab({ state, me, isOwner, isMgr, update }) {
   );
 }
 function CatChips({ value, onChange }) {
-  return <div className="flex flex-wrap gap-1.5">{MEDIA_CATS.map((c) => <button key={c} onClick={() => onChange(c)} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ${value === c ? "border-orange-400 bg-orange-500/10 text-orange-500" : "s-border s-muted"}`}>{c}</button>)}</div>;
+  return <div className="flex flex-wrap gap-1.5">{MEDIA_CATS.map((c) => <button key={c} onClick={() => onChange(c)} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ${value === c ? "ac-border ac-soft" : "s-border s-muted"}`}>{c}</button>)}</div>;
 }
 function MediaEditModal({ item, onClose, update }) {
   const [note, setNote] = useState(""); const [cat, setCat] = useState("ADS");
@@ -1258,7 +1287,7 @@ function TaskTab({ state, me, update }) {
               <div key={t.id} className="flex items-center gap-3 px-2 py-2 border-b s-border last:border-0">
                 <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
                 <span className="flex-1 text-sm line-through s-muted">{t.title}</span>
-                <button onClick={() => toggle(t.id)} className="text-xs text-orange-500 font-bold shrink-0">Pulihkan</button>
+                <button onClick={() => toggle(t.id)} className="text-xs ac-text font-bold shrink-0">Pulihkan</button>
                 <button onClick={() => del(t.id)} className="s-muted shrink-0"><Trash2 size={14} /></button>
               </div>
             ))}
@@ -1280,14 +1309,14 @@ function OwnerTaskTab({ state, update }) {
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Kelola Task</p><Btn onClick={() => setOpenAdd(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
-      {staff.length === 0 && <Card className="p-8 text-center"><CheckSquare size={28} className="mx-auto text-orange-500 mb-2" /><p className="font-semibold text-sm">Belum ada anggota tim</p><p className="text-xs s-muted mt-1">Tambah anggota dulu di menu Tim.</p></Card>}
+      {staff.length === 0 && <Card className="p-8 text-center"><CheckSquare size={28} className="mx-auto ac-text mb-2" /><p className="font-semibold text-sm">Belum ada anggota tim</p><p className="text-xs s-muted mt-1">Tambah anggota dulu di menu Tim.</p></Card>}
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {staff.map((u) => {
           const ts = state.tasks.filter((t) => t.userId === u.id);
           const active = ts.filter((t) => !t.done);
           return (
             <Card key={u.id} className="p-4">
-              <div className="flex items-center gap-2 mb-3"><Avatar user={u} size={34} /><div className="flex-1"><p className="font-semibold text-sm">{u.name}</p><p className="text-[11px] s-muted">{active.length} aktif · {ts.length - active.length} selesai</p></div><button onClick={() => setOpenAdd(u.id)} className="s-soft rounded-lg p-1.5"><Plus size={15} className="text-orange-500" /></button></div>
+              <div className="flex items-center gap-2 mb-3"><Avatar user={u} size={34} /><div className="flex-1"><p className="font-semibold text-sm">{u.name}</p><p className="text-[11px] s-muted">{active.length} aktif · {ts.length - active.length} selesai</p></div><button onClick={() => setOpenAdd(u.id)} className="s-soft rounded-lg p-1.5"><Plus size={15} className="ac-text" /></button></div>
               {ts.length === 0 && <p className="text-xs s-muted">Belum ada task. Tap + buat nambahin.</p>}
               <div className="space-y-1.5">
                 {ts.map((t) => (
@@ -1356,7 +1385,7 @@ function TimTab({ state, update, isOwner }) {
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Avatar user={u} size={36} /><div><p className="font-semibold text-sm">{u.name}{u.role === "admin" && <span className="ml-1.5"><Tag color="blue">Admin</Tag></span>}</p><p className="text-[11px] s-muted">{u.position}</p></div></div><Tag color="slate">{done}/{tasks.length} task</Tag></div>
-            {(u.saleBonus || total !== 0) && <p className={`text-[11px] font-semibold mb-1.5 flex items-center gap-1 ${total < 0 ? "text-rose-500" : "text-orange-500"}`}><Gift size={12} />Extra cash bulan ini: {rp(total)}</p>}
+            {(u.saleBonus || total !== 0) && <p className={`text-[11px] font-semibold mb-1.5 flex items-center gap-1 ${total < 0 ? "text-rose-500" : "ac-text"}`}><Gift size={12} />Extra cash bulan ini: {rp(total)}</p>}
             <div className="space-y-1 mb-2">{tasks.filter((t) => !t.done).length === 0 && <p className="text-[11px] s-muted">Tidak ada task aktif.</p>}{tasks.filter((t) => !t.done).map((t) => <div key={t.id} className="flex items-center gap-2 text-xs s-muted"><Circle size={13} /><span>{t.title}</span>{t.setBy === "owner" && <span className="text-[9px] text-blue-500 font-bold">(owner)</span>}</div>)}</div>
             {isOwner && <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setAssignTo(u.id)}><Plus size={14} className="inline mr-1 -mt-0.5" />Task</Btn><Btn variant="ghost" onClick={() => openExtra(u)}><Gift size={14} className="inline mr-1 -mt-0.5" />Atur extra cash</Btn></div>}
             <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t s-border">{isOwner && <button onClick={() => openEdit(u)} className="text-xs s-muted flex items-center gap-1"><Pencil size={12} />Edit</button>}<button onClick={() => resetPw(u.id, u.name)} className="text-xs s-muted flex items-center gap-1"><Lock size={12} />Reset password</button>{isOwner && <button onClick={() => delUser(u.id, u.name)} className="text-xs text-rose-500 flex items-center gap-1 ml-auto"><Trash2 size={12} />Hapus</button>}</div>
@@ -1365,8 +1394,8 @@ function TimTab({ state, update, isOwner }) {
       })}</div>
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
-      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Atur extra cash">{extraTo && (() => { const u2 = state.users.find((x) => x.id === extraTo); const auto = saleBonusFor(state, u2, month()); const soldN = state.units.filter((x) => x.status === "terjual" && inMonth(x.soldAt, month())).length; return (<><p className="text-sm font-semibold mb-1">{u2 && u2.name}</p>{u2 && u2.saleBonus && <p className="text-[11px] s-muted mb-2 leading-relaxed">Bonus otomatis bulan ini: <b className="text-orange-500">{rp(auto)}</b> ({soldN} motor terjual × Rp200rb). Set total di bawah kalau mau nambah bonus atau motong (mis. penalti).</p>}<Field label="Total extra cash bulan ini (Rp)"><input type="number" className={inputCls} value={extraVal} onChange={(e) => setExtraVal(e.target.value)} placeholder="300000" /></Field><Btn onClick={saveExtra} className="w-full mt-2">Simpan</Btn></>); })()}</Modal>
-      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "bg-orange-500" : "bg-slate-300"}`}><div className={`w-5 h-5 bg-white rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
+      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Atur extra cash">{extraTo && (() => { const u2 = state.users.find((x) => x.id === extraTo); const auto = saleBonusFor(state, u2, month()); const soldN = state.units.filter((x) => x.status === "terjual" && inMonth(x.soldAt, month())).length; return (<><p className="text-sm font-semibold mb-1">{u2 && u2.name}</p>{u2 && u2.saleBonus && <p className="text-[11px] s-muted mb-2 leading-relaxed">Bonus otomatis bulan ini: <b className="ac-text">{rp(auto)}</b> ({soldN} motor terjual × Rp200rb). Set total di bawah kalau mau nambah bonus atau motong (mis. penalti).</p>}<Field label="Total extra cash bulan ini (Rp)"><input type="number" className={inputCls} value={extraVal} onChange={(e) => setExtraVal(e.target.value)} placeholder="300000" /></Field><Btn onClick={saveExtra} className="w-full mt-2">Simpan</Btn></>); })()}</Modal>
+      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
 }
@@ -1435,7 +1464,7 @@ function LaporanTab({ state }) {
       <button onClick={exportExcel} className="w-full flex items-center justify-center gap-2 s-soft rounded-xl py-2.5 text-sm font-semibold text-emerald-600"><Download size={15} />Unduh laporan Excel ({monthLabel(ym)})</button>
 
       <Card className="p-4">
-        <p className="font-bold text-sm mb-1 flex items-center gap-1.5"><PieIcon size={15} className="text-orange-500" />Motor terjual bulan ini</p>
+        <p className="font-bold text-sm mb-1 flex items-center gap-1.5"><PieIcon size={15} className="ac-text" />Motor terjual bulan ini</p>
         {r.total === 0 ? (
           <p className="text-sm s-muted py-6 text-center">Belum ada unit terjual di bulan ini.</p>
         ) : (
@@ -1477,7 +1506,7 @@ function LaporanTab({ state }) {
             <React.Fragment key={user.id}>
               <div className="flex items-center gap-1.5"><Avatar user={user} size={22} /><span className="font-medium truncate">{user.name}</span></div>
               <span className="text-center font-bold">{hadir}</span>
-              <span className="text-right font-bold text-orange-500">{extra ? rp(extra) : "-"}</span>
+              <span className="text-right font-bold ac-text">{extra ? rp(extra) : "-"}</span>
             </React.Fragment>
           ))}
         </div>
@@ -1769,19 +1798,25 @@ function HandbookPage({ open, onClose, isMgr }) {
   const goPage = (n) => { const c = clampPage(n); setShowResults(false); pageRef.current = c; setPage(c); setPageInput(String(c)); scrollToPage(c, "smooth"); };
   const commitInput = () => { const n = parseInt(pageInput, 10); if (!isNaN(n)) goPage(n); else setPageInput(String(page)); };
 
-  // hasil pencarian
+  // hasil pencarian — cocokkan juga versi tanpa spasi, karena banyak teks di PDF
+  // ini "letter-spaced" (tiap huruf jadi item terpisah → "H A N D B O O K").
   const results = (() => {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2 || !textIndex) return [];
+    const qRaw = query.trim().toLowerCase();
+    if (qRaw.length < 2 || !textIndex) return [];
+    const qNorm = qRaw.replace(/\s+/g, "");
     const out = [];
     for (const pg of Object.keys(textIndex)) {
       const txt = textIndex[pg]; if (!txt) continue;
       const low = txt.toLowerCase();
-      const at = low.indexOf(q);
-      if (at === -1) continue;
-      const start = Math.max(0, at - 32);
-      const snippet = (start > 0 ? "…" : "") + txt.slice(start, at + q.length + 48) + "…";
-      out.push({ page: Number(pg), at: at - start + (start > 0 ? 1 : 0), qlen: q.length, snippet });
+      const at = low.indexOf(qRaw);
+      if (at !== -1) {
+        const start = Math.max(0, at - 32);
+        const snippet = (start > 0 ? "…" : "") + txt.slice(start, at + qRaw.length + 48) + "…";
+        out.push({ page: Number(pg), at: at - start + (start > 0 ? 1 : 0), qlen: qRaw.length, snippet });
+      } else if (qNorm.length >= 2 && low.replace(/\s+/g, "").indexOf(qNorm) !== -1) {
+        const snippet = txt.replace(/\s+/g, " ").trim().slice(0, 96) + "…";
+        out.push({ page: Number(pg), at: 0, qlen: 0, snippet }); // snippet tanpa highlight (posisi tak pasti)
+      } else continue;
       if (out.length >= 8) break;
     }
     return out;
@@ -1820,7 +1855,7 @@ function HandbookPage({ open, onClose, isMgr }) {
       {/* header */}
       <div className="mr-header text-white px-3 py-2.5 flex items-center gap-2 shrink-0">
         <button onClick={onClose} className="p-1.5 active:scale-90"><ArrowLeft size={20} /></button>
-        <div className="w-8 h-8 rounded-xl bg-orange-500 grid place-items-center shrink-0"><BookOpen size={16} /></div>
+        <div className="w-8 h-8 rounded-xl ac-bg grid place-items-center shrink-0"><BookOpen size={16} /></div>
         <div className="min-w-0 flex-1">
           <p className="font-bold leading-tight truncate">Handbook</p>
           <p className="text-[10px] text-slate-400 leading-tight">{updatedLabel ? "Diperbarui " + updatedLabel : "Panduan tim Motorell"}</p>
@@ -1843,7 +1878,7 @@ function HandbookPage({ open, onClose, isMgr }) {
           />
           {query && <button onClick={() => { setQuery(""); setShowResults(false); }} className="s-muted active:scale-90"><X size={16} /></button>}
         </div>
-        {indexing && <div className="h-0.5 mt-1 rounded-full overflow-hidden s-soft"><div className="h-full bg-orange-500 transition-all" style={{ width: indexPct + "%" }} /></div>}
+        {indexing && <div className="h-0.5 mt-1 rounded-full overflow-hidden s-soft"><div className="h-full ac-bg transition-all" style={{ width: indexPct + "%" }} /></div>}
         {showResults && query.trim().length >= 2 && (
           <div className="absolute left-3 right-3 top-full mt-1 s-surface s-border border rounded-xl shadow-xl z-10 overflow-hidden">
             {textIndex == null && <p className="text-xs s-muted px-3 py-3 flex items-center gap-2"><Loader2 size={13} className="animate-spin" /> Menyiapkan pencarian… {indexPct}%</p>}
@@ -1852,8 +1887,8 @@ function HandbookPage({ open, onClose, isMgr }) {
               const before = r.snippet.slice(0, r.at); const hit = r.snippet.slice(r.at, r.at + r.qlen); const after = r.snippet.slice(r.at + r.qlen);
               return (
                 <button key={i} onClick={() => goPage(r.page)} className="w-full text-left px-3 py-2 border-b s-border last:border-0 active:s-soft hover:s-soft transition">
-                  <div className="flex items-center gap-2 mb-0.5"><span className="text-[10px] font-bold text-orange-500">Halaman {r.page}</span></div>
-                  <p className="text-xs s-muted leading-snug break-words">{before}<span className="font-bold text-orange-500">{hit}</span>{after}</p>
+                  <div className="flex items-center gap-2 mb-0.5"><span className="text-[10px] font-bold ac-text">Halaman {r.page}</span></div>
+                  <p className="text-xs s-muted leading-snug break-words">{before}<span className="font-bold ac-text">{hit}</span>{after}</p>
                 </button>
               );
             })}
@@ -1933,6 +1968,109 @@ function HandbookPage({ open, onClose, isMgr }) {
   );
 }
 
+/* ============ Inspeksi (cek motor sebelum dibeli) — Tugas 8 ============ */
+const INSPEKSI_SECTIONS = [
+  { key: "A", title: "Dokumen", items: ["Foto STNK", "Foto BPKB", "Foto Faktur (jika ada)", "Foto Manual Book", "Foto Kunci Utama", "Foto Kunci Cadangan", "Nomor Rangka", "Nomor Mesin", "Verifikasi kesesuaian nomor", "Pemeriksaan UV", "Status Pajak"] },
+  { key: "B", title: "Body", items: ["Cover body", "Body halus", "Cover retak", "Cover patah", "Bekas dempul", "Bekas repaint", "Bekas jatuh", "Bekas tabrak", "Kelengkapan body"] },
+  { key: "C", title: "Mesin", items: ["Starter", "Idle", "Tarikan", "Kompresi", "Suara mesin", "Kebocoran oli", "Bekas bongkar mesin", "Kondisi fisik mesin", "Asap knalpot", "Colek bagian dalam knalpot", "Getaran"] },
+  { key: "D", title: "Rangka", items: ["Nomor rangka", "Bekas las", "Bekas tabrak", "Bekas bengkok", "Karat"] },
+  { key: "E", title: "Kaki-kaki", items: ["Ban depan", "Ban belakang", "Velg depan", "Velg belakang", "Suspensi depan", "Suspensi belakang", "Bearing", "Rem depan", "Rem belakang", "Disc", "Kampas rem", "Rantai", "Gear"] },
+  { key: "F", title: "Kelistrikan", items: ["Lampu utama", "Lampu jauh", "Lampu rem", "Sein", "Klakson", "Speedometer", "Fuel meter", "Indikator", "Charging system"] },
+];
+const INS_STATUS = [{ k: "baik", l: "Baik", c: "#10b981" }, { k: "perhatian", l: "Perlu perhatian", c: "#eab308" }, { k: "masalah", l: "Bermasalah", c: "#ef4444" }];
+const INS_TOTAL = INSPEKSI_SECTIONS.reduce((a, s) => a + s.items.length, 0);
+
+function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
+  const [name, setName] = useState("");
+  const [items, setItems] = useState({});
+  const [notes, setNotes] = useState("");
+  const [openSec, setOpenSec] = useState("A");
+  const [saving, setSaving] = useState(false);
+  const photoRef = useRef(null); const photoForRef = useRef(null);
+  const reset = () => { setName(""); setItems({}); setNotes(""); setOpenSec("A"); };
+  const setStatus = (key, st) => setItems((p) => ({ ...p, [key]: { ...(p[key] || {}), status: p[key] && p[key].status === st ? undefined : st } }));
+  const pickPhoto = (key) => { photoForRef.current = key; if (photoRef.current) photoRef.current.click(); };
+  const onPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const key = photoForRef.current; photoForRef.current = null; if (!f || !key) return; const data = await compress(f, 900, 0.5); if (data) setItems((p) => ({ ...p, [key]: { ...(p[key] || {}), photo: data } })); };
+  const checkedCount = (sec) => sec.items.filter((it) => items[sec.key + ":" + it] && items[sec.key + ":" + it].status).length;
+  const totalChecked = INSPEKSI_SECTIONS.reduce((a, s) => a + checkedCount(s), 0);
+  const decide = (buy) => {
+    if (saving) return; setSaving(true);
+    const base = { id: uid(), date: today(), by: me.id, byName: me.name, items, notes: notes.trim(), name: name.trim() };
+    if (!buy) {
+      update((s) => { s.inspections.unshift({ ...base, decision: "tidak", unitId: null }); return s; });
+      setSaving(false); reset(); onClose(); alert("Inspeksi disimpan sebagai riwayat (tidak dibeli).");
+      return;
+    }
+    const newId = uid(); // dibuat di luar updater supaya tak balapan dengan setState async
+    update((s) => { createUnit(s, { name: name.trim() || "Motor (inspeksi)", inspectionResult: { items, notes: notes.trim(), date: today(), by: me.id } }, me.id, newId); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; });
+    setSaving(false); reset(); onClose();
+    if (onOpenUnit) onOpenUnit(newId);
+  };
+  if (!open) return null;
+  const history = state.inspections || [];
+  return (
+    <div className="fixed inset-0 z-[56] s-bg flex flex-col max-w-3xl mx-auto an-up">
+      <div className="mr-header text-white px-3 py-2.5 flex items-center gap-2 shrink-0">
+        <button onClick={onClose} className="p-1.5 active:scale-90"><ArrowLeft size={20} /></button>
+        <div className="w-8 h-8 rounded-xl ac-bg grid place-items-center shrink-0"><ClipboardCheck size={16} /></div>
+        <div className="min-w-0 flex-1"><p className="font-bold leading-tight">Inspeksi Motor</p><p className="text-[10px] text-slate-400 leading-tight">Cek sebelum dibeli · {totalChecked}/{INS_TOTAL} item dicek</p></div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-3">
+        <Field label="Nama / tipe motor (opsional)"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="cth: Honda Beat 2019" /></Field>
+        {INSPEKSI_SECTIONS.map((sec) => {
+          const op = openSec === sec.key; const cc = checkedCount(sec);
+          return (
+            <Card key={sec.key} className="overflow-hidden">
+              <button onClick={() => setOpenSec(op ? null : sec.key)} className="w-full flex items-center justify-between px-4 py-3">
+                <span className="font-bold text-sm flex items-center gap-2"><span className="ac-soft text-[10px] font-bold px-1.5 py-0.5 rounded">{sec.key}</span>{sec.title}</span>
+                <span className="flex items-center gap-2"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cc === sec.items.length ? "tg-emerald" : "s-soft s-muted"}`}>{cc}/{sec.items.length}</span><ChevronDown size={16} className={`s-muted transition ${op ? "rotate-180" : ""}`} /></span>
+              </button>
+              {op && <div className="px-3 pb-3 space-y-2">
+                {sec.items.map((it) => {
+                  const key = sec.key + ":" + it; const cur = items[key] || {}; const isFoto = /^foto/i.test(it);
+                  return (
+                    <div key={key} className="s-soft rounded-xl p-2.5">
+                      <div className="flex items-center justify-between gap-2 mb-1.5"><span className="text-xs font-semibold">{it}</span>
+                        {isFoto && <button onClick={() => pickPhoto(key)} className="shrink-0 text-[10px] font-semibold ac-soft px-2 py-1 rounded-lg flex items-center gap-1"><Camera size={12} />{cur.photo ? "Ganti" : "Foto"}</button>}
+                      </div>
+                      {cur.photo && <img src={cur.photo} className="w-full max-h-32 object-cover rounded-lg mb-2" alt="" />}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {INS_STATUS.map((st) => { const on = cur.status === st.k; return (
+                          <button key={st.k} onClick={() => setStatus(key, st.k)} className="py-1.5 rounded-lg text-[10px] font-bold border transition active:scale-95" style={on ? { background: st.c, borderColor: st.c, color: "#fff" } : { borderColor: "var(--border)", color: "var(--muted)" }}>{st.l}</button>
+                        ); })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>}
+            </Card>
+          );
+        })}
+        <Field label="Catatan tambahan"><textarea className={inputCls + " min-h-[80px]"} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Catatan bebas tentang kondisi motor…" /></Field>
+        <Card className="p-4">
+          <p className="font-bold text-center mb-3">Motor ini jadi dibeli?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => decide(true)} disabled={saving} className="py-3 rounded-xl font-bold text-white bg-emerald-500 active:scale-95 disabled:opacity-50">Ya, beli</button>
+            <button onClick={() => decide(false)} disabled={saving} className="py-3 rounded-xl font-bold text-white bg-rose-500 active:scale-95 disabled:opacity-50">Tidak</button>
+          </div>
+        </Card>
+        {history.length > 0 && (
+          <div className="pt-1">
+            <p className="text-xs font-bold s-muted mb-2">Riwayat inspeksi</p>
+            <div className="space-y-2">{history.slice(0, 30).map((h) => { const un = h.unitId && state.units.find((u) => u.id === h.unitId); return (
+              <Card key={h.id} className="p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0"><p className="text-sm font-semibold truncate">{un ? un.name : (h.name || (h.decision === "beli" ? "Unit dibeli" : "Tidak dibeli"))}</p><p className="text-[11px] s-muted">{new Date(h.date + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{h.byName ? " · " + h.byName : ""}</p></div>
+                <Tag color={h.decision === "beli" ? "emerald" : "rose"}>{h.decision === "beli" ? "Dibeli" : "Tidak"}</Tag>
+              </Card>
+            ); })}</div>
+          </div>
+        )}
+      </div>
+      <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+    </div>
+  );
+}
+
 function ChatPage({ open, onClose, state, me, update, chatTick }) {
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState("");
@@ -1984,7 +2122,7 @@ function ChatPage({ open, onClose, state, me, update, chatTick }) {
     <div className="fixed inset-0 z-[55] s-bg flex flex-col max-w-md mx-auto an-up">
       <div className="mr-header text-white px-4 py-3 flex items-center gap-3">
         <button onClick={onClose}><ArrowLeft size={20} /></button>
-        <div className="w-9 h-9 rounded-xl bg-orange-500 grid place-items-center"><Users size={18} /></div>
+        <div className="w-9 h-9 rounded-xl ac-bg grid place-items-center"><Users size={18} /></div>
         <div><p className="font-bold leading-tight">Grup Motorell</p><p className="text-[11px] text-slate-400">{state.users.length} anggota</p></div>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
@@ -2001,7 +2139,7 @@ function ChatPage({ open, onClose, state, me, update, chatTick }) {
                 {!mine && <Avatar user={u} size={28} />}
                 <div className="max-w-[76%] flex flex-col" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
                   {!mine && <span className="text-[10px] s-muted ml-1 mb-0.5">{u ? u.name : "?"}</span>}
-                  <div className={`rounded-2xl px-3 py-2 ${mine ? "bg-orange-500 text-white rounded-br-md" : "s-surface s-text s-border border rounded-bl-md"} ${m._st ? "opacity-70" : ""}`}>
+                  <div className={`rounded-2xl px-3 py-2 ${mine ? "ac-bg rounded-br-md" : "s-surface s-text s-border border rounded-bl-md"} ${m._st ? "opacity-70" : ""}`}>
                     {m.photo && <img src={m.photo} onClick={() => setZoom(m.photo)} className="rounded-xl mb-1 max-h-52 object-cover" alt="" />}
                     {m.msg && <p className="text-sm whitespace-pre-wrap break-words">{m.msg}</p>}
                   </div>
@@ -2024,7 +2162,7 @@ function ChatPage({ open, onClose, state, me, update, chatTick }) {
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
           <button onClick={() => fileRef.current && fileRef.current.click()} className="p-2.5 s-soft rounded-full active:scale-90 transition"><Camera size={18} /></button>
           <input className={inputCls + " flex-1"} placeholder="Tulis pesan…" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
-          <button onClick={send} className="p-2.5 bg-orange-500 text-white rounded-full active:scale-90 transition"><Send size={18} /></button>
+          <button onClick={send} className="p-2.5 ac-bg rounded-full active:scale-90 transition"><Send size={18} /></button>
         </div>
       </div>
       <Lightbox src={zoom} onClose={() => setZoom("")} />
