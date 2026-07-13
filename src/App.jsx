@@ -218,7 +218,7 @@ function fixSaleBonus(s) {
 const Card = ({ children, className = "" }) => <div className={`s-surface s-border border rounded-2xl ${className}`}>{children}</div>;
 const Fade = ({ delay = 0, children }) => <div className="mr-fade" style={{ animationDelay: `${delay}ms` }}>{children}</div>;
 const Btn = ({ children, onClick, variant = "primary", className = "", disabled }) => {
-  const st = { primary: "bg-orange-500 text-white", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
+  const st = { primary: "bg-orange-500 text-white shadow-lg shadow-orange-500/30", dark: "bg-slate-700 text-white", ghost: "s-soft s-text" };
   return <button type="button" onClick={onClick} disabled={disabled} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-40 ${st[variant]} ${className}`}>{children}</button>;
 };
 const Field = ({ label, children }) => <label className="block mb-3"><span className="text-xs font-semibold s-muted mb-1 block">{label}</span>{children}</label>;
@@ -462,10 +462,22 @@ function MotorellOps() {
     <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
 .mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
-.mr-app.dark{--bg:#0a0f1a;--surface:#121a2b;--soft:#1b2540;--border:#26324d;--text:#e7edf7;--muted:#94a6c4;--header:#070b14}
+.mr-app.dark{--bg:#070910;--surface:#0e131f;--soft:#161d2c;--border:#242d40;--text:#eef2fb;--muted:#93a3c1;--header:#05070d}
 .s-bg{background:var(--bg)}.s-surface{background:var(--surface)}.s-soft{background:var(--soft)}.s-border{border-color:var(--border)}.s-text{color:var(--text)}.s-muted{color:var(--muted)}
-.mr-nav{background:var(--surface);border-top:1px solid var(--border)}
-@media(min-width:768px){.mr-nav{border-top:none;border:1px solid rgba(226,232,240,.85);background:rgba(255,255,255,.7);-webkit-backdrop-filter:saturate(1.7) blur(20px);backdrop-filter:saturate(1.7) blur(20px);box-shadow:0 18px 50px rgba(2,6,23,.16)}.mr-app.dark .mr-nav{border:1px solid rgba(255,255,255,.1);background:rgba(18,26,43,.6);box-shadow:0 18px 50px rgba(0,0,0,.55)}}
+.mr-nav{background:var(--surface);background:color-mix(in srgb,var(--surface) 74%,transparent);border-top:1px solid var(--border);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px)}
+@media(min-width:768px){.mr-nav{border-top:none;border:1px solid rgba(226,232,240,.85);background:rgba(255,255,255,.7);-webkit-backdrop-filter:saturate(1.7) blur(20px);backdrop-filter:saturate(1.7) blur(20px);box-shadow:0 18px 50px rgba(2,6,23,.16)}.mr-app.dark .mr-nav{border:1px solid rgba(255,255,255,.1);background:rgba(14,19,31,.62);box-shadow:0 18px 50px rgba(0,0,0,.6)}}
+/* ===== premium cinematic (dari referensi desain) ===== */
+.mr-header{background:linear-gradient(150deg,#0a1122 0%,var(--header) 56%,#0a0e18 100%);position:relative;overflow:hidden}
+.mr-header::before{content:"";position:absolute;top:-45%;right:-8%;width:68%;height:190%;background:radial-gradient(closest-side,rgba(249,115,22,.30),transparent 70%);pointer-events:none}
+.mr-header::after{content:"";position:absolute;left:-14%;bottom:-70%;width:56%;height:170%;background:radial-gradient(closest-side,rgba(56,189,248,.15),transparent 72%);pointer-events:none}
+.mr-header>*{position:relative;z-index:1}
+.mr-header button{-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
+.mr-display{font-weight:800;letter-spacing:-.025em;line-height:1.03}
+.mr-glow{box-shadow:0 10px 30px -8px rgba(249,115,22,.55)}
+.mr-textglow{text-shadow:0 0 24px rgba(249,115,22,.4)}
+.mr-hero-glow{position:relative}
+.mr-hero-glow::before{content:"";position:absolute;inset:-30% -20% auto -20%;height:220px;background:radial-gradient(60% 100% at 30% 0%,rgba(249,115,22,.20),transparent 70%);pointer-events:none;z-index:0}
+.mr-app.dark .mr-hero-glow::before{background:radial-gradient(60% 100% at 30% 0%,rgba(249,115,22,.26),transparent 70%)}
 .s-input{background:var(--soft);border:1px solid var(--border);color:var(--text)}.s-input::placeholder{color:var(--muted);opacity:.8}.s-input:focus{outline:none;border-color:#fb923c}
 .tg-emerald{background:#ecfdf5;color:#047857}.tg-rose{background:#fff1f2;color:#e11d48}.tg-amber{background:#fffbeb;color:#b45309}.tg-slate{background:#f1f5f9;color:#64748b}.tg-blue{background:#eff6ff;color:#2563eb}.tg-purple{background:#faf5ff;color:#9333ea}
 .mr-app.dark .tg-emerald{background:rgba(16,185,129,.16);color:#6ee7b7}.mr-app.dark .tg-rose{background:rgba(244,63,94,.16);color:#fda4af}.mr-app.dark .tg-amber{background:rgba(245,158,11,.16);color:#fcd34d}.mr-app.dark .tg-slate{background:rgba(148,163,184,.16);color:#cbd5e1}.mr-app.dark .tg-blue{background:rgba(59,130,246,.16);color:#93c5fd}.mr-app.dark .tg-purple{background:rgba(168,85,247,.16);color:#d8b4fe}
@@ -516,7 +528,7 @@ button:active{transform:scale(.97)}
 `}</style>
 
       <Fade delay={0}>
-        <header style={{ background: "var(--header)" }} className="text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
+        <header className="mr-header text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6 cursor-pointer select-none" onClick={onLogoTap} draggable="false" /></div>
             <div className="flex items-center gap-2">
@@ -846,7 +858,7 @@ function HomeTab({ state, me, isOwner, go }) {
 
   return (
     <div className="space-y-3 pt-1">
-      <Fade delay={40}><div className="pt-5"><GreetingBanner><p className="text-2xl font-extrabold leading-snug text-white">{g.t}, {g.e}</p><p className="text-base text-white/75 mt-0.5">{me.name}</p></GreetingBanner></div></Fade>
+      <Fade delay={40}><div className="pt-5"><GreetingBanner><p className="text-3xl mr-display text-white">{g.t}, {g.e}</p><p className="text-base text-white/70 mt-1.5 font-medium tracking-wide">{me.name}</p></GreetingBanner></div></Fade>
 
       <Fade delay={120}>
         {isOwner ? (
@@ -1798,7 +1810,7 @@ function HandbookPage({ open, onClose, isMgr }) {
   return (
     <div className="fixed inset-0 z-[56] s-bg flex flex-col max-w-4xl mx-auto an-up">
       {/* header */}
-      <div style={{ background: "var(--header)" }} className="text-white px-3 py-2.5 flex items-center gap-2 shrink-0">
+      <div className="mr-header text-white px-3 py-2.5 flex items-center gap-2 shrink-0">
         <button onClick={onClose} className="p-1.5 active:scale-90"><ArrowLeft size={20} /></button>
         <div className="w-8 h-8 rounded-xl bg-orange-500 grid place-items-center shrink-0"><BookOpen size={16} /></div>
         <div className="min-w-0 flex-1">
@@ -1962,7 +1974,7 @@ function ChatPage({ open, onClose, state, me, update, chatTick }) {
   const pickPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; setPhoto(await compress(f, 720, 0.5)); };
   return (
     <div className="fixed inset-0 z-[55] s-bg flex flex-col max-w-md mx-auto an-up">
-      <div style={{ background: "var(--header)" }} className="text-white px-4 py-3 flex items-center gap-3">
+      <div className="mr-header text-white px-4 py-3 flex items-center gap-3">
         <button onClick={onClose}><ArrowLeft size={20} /></button>
         <div className="w-9 h-9 rounded-xl bg-orange-500 grid place-items-center"><Users size={18} /></div>
         <div><p className="font-bold leading-tight">Grup Motorell</p><p className="text-[11px] text-slate-400">{state.users.length} anggota</p></div>
