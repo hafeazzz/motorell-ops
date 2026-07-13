@@ -461,22 +461,26 @@ function MotorellOps() {
   return (
     <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
-.mr-app{--bg:#eef1f6;--surface:#ffffff;--soft:#f1f5f9;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
-.mr-app.dark{--bg:#050506;--surface:#0c0d11;--soft:#14161c;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#020203}
-.s-bg{background:var(--bg)}.s-surface{background:var(--surface)}.s-soft{background:var(--soft)}.s-border{border-color:var(--border)}.s-text{color:var(--text)}.s-muted{color:var(--muted)}
+.mr-app{--bg:#edf0f5;--surface:#ffffff;--soft:#eef1f6;--border:#e5e9f0;--text:#0f172a;--muted:#64748b;--header:#0f172a}
+.mr-app.dark{--bg:#08090c;--surface:#0d0e13;--soft:#15171e;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#040405}
+.s-bg{background:var(--bg)}.s-surface{background:var(--surface);-webkit-backdrop-filter:saturate(1.5) blur(13px);backdrop-filter:saturate(1.5) blur(13px)}.s-soft{background:var(--soft)}.s-border{border-color:var(--border)}.s-text{color:var(--text)}.s-muted{color:var(--muted)}
 .mr-nav{background:var(--surface);background:color-mix(in srgb,var(--surface) 74%,transparent);border-top:1px solid var(--border);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px)}
 @media(min-width:768px){.mr-nav{border-top:none;border:1px solid rgba(226,232,240,.85);background:rgba(255,255,255,.7);-webkit-backdrop-filter:saturate(1.7) blur(20px);backdrop-filter:saturate(1.7) blur(20px);box-shadow:0 18px 50px rgba(2,6,23,.16)}.mr-app.dark .mr-nav{border:1px solid rgba(255,255,255,.1);background:rgba(14,19,31,.62);box-shadow:0 18px 50px rgba(0,0,0,.6)}}
 /* ===== premium cinematic (dari referensi desain) ===== */
-.mr-header{background:linear-gradient(155deg,#101216 0%,var(--header) 58%,#050506 100%);position:relative;overflow:hidden}
+.mr-header{background-image:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.07) 48%,transparent 56%),linear-gradient(155deg,#111318 0%,var(--header) 58%,#050506 100%);background-size:260% 100%,100% 100%;background-repeat:no-repeat;background-position:150% 0,0 0;position:relative;overflow:hidden;animation:mrHeaderSheen 7.5s ease-in-out 1s infinite}
+@keyframes mrHeaderSheen{0%{background-position:150% 0,0 0}45%{background-position:-80% 0,0 0}100%{background-position:-80% 0,0 0}}
 .mr-header::before{content:"";position:absolute;top:-50%;right:-8%;width:72%;height:210%;background:radial-gradient(closest-side,rgba(249,115,22,.42),transparent 70%);pointer-events:none}
 .mr-header::after{content:"";position:absolute;left:-14%;bottom:-75%;width:58%;height:180%;background:radial-gradient(closest-side,rgba(56,189,248,.16),transparent 72%);pointer-events:none}
 .mr-header>*{position:relative;z-index:1}
 .mr-header button{-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
-/* ===== BLACK GRANITE: tekstur grain + permukaan batu dipoles ===== */
-.mr-app.dark.s-bg,.mr-app.dark .s-bg{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.26'/%3E%3C/svg%3E")}
-.mr-app.dark .s-surface{background-image:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0) 42%);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 34px -20px rgba(0,0,0,.85)}
-.mr-app.dark .mr-header{box-shadow:0 18px 46px -22px rgba(0,0,0,.9),inset 0 -1px 0 rgba(255,255,255,.05)}
+/* ===== BLACK GRANITE (dark) — hitam elegan berkedalaman + grain + kaca ===== */
+.mr-app.dark.s-bg,.mr-app.dark .s-bg{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.2'/%3E%3C/svg%3E"),radial-gradient(125% 85% at 50% -12%,#16181f 0%,#0b0c11 44%,#070709 100%)}
+.mr-app.dark .s-surface{background-color:rgba(15,16,22,.66);background-image:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,0) 44%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 18px 42px -22px rgba(0,0,0,.92)}
+.mr-app.dark .mr-header{box-shadow:0 18px 46px -22px rgba(0,0,0,.9),inset 0 -1px 0 rgba(255,255,255,.06)}
 .mr-navon svg{filter:drop-shadow(0 0 9px rgba(249,115,22,.7))!important}
+/* ===== LIGHT — pearl elegan + kaca lembut ===== */
+.mr-app:not(.dark).s-bg,.mr-app:not(.dark) .s-bg{background-color:var(--bg);background-image:radial-gradient(120% 82% at 50% -10%,#ffffff 0%,#eef1f6 46%,#e4e8f0 100%)}
+.mr-app:not(.dark) .s-surface{background-color:rgba(255,255,255,.7);box-shadow:0 14px 36px -18px rgba(15,23,42,.22),inset 0 1px 0 rgba(255,255,255,.95)}
 .mr-display{font-weight:800;letter-spacing:-.025em;line-height:1.03}
 .mr-glow{box-shadow:0 10px 30px -8px rgba(249,115,22,.55)}
 .mr-textglow{text-shadow:0 0 24px rgba(249,115,22,.4)}
@@ -491,7 +495,7 @@ function MotorellOps() {
 .an-r{animation:anFade .34s ease both}.an-l{animation:anFade .34s ease both}.an-up{animation:anUp .38s cubic-bezier(.16,1,.3,1) both}
 button{transition:transform .12s ease}
 *{-webkit-tap-highlight-color:transparent}html{scroll-behavior:smooth}
-@media (prefers-reduced-motion:reduce){.mr-fade,.an-r,.an-l,.an-up,.mr-shine,.mr-navon,.mrw-logo,.mrw-ring,.mrw-spark,.mrw-text{animation:none}.mrw-wrap{animation:mrwOut .3s ease .6s forwards}.mr-tilt{transition:none}}
+@media (prefers-reduced-motion:reduce){.mr-fade,.an-r,.an-l,.an-up,.mr-shine,.mr-header,.mr-navon,.mrw-logo,.mrw-ring,.mrw-spark,.mrw-text{animation:none}.mrw-wrap{animation:mrwOut .3s ease .6s forwards}.mr-tilt{transition:none}}
 @keyframes catPop{0%{opacity:0;transform:scale(.3) translateY(20px)}55%{opacity:1;transform:scale(1.15)}100%{transform:scale(1)}}
 @keyframes catConfetti{0%{opacity:1;transform:translateY(-12vh) rotate(0)}100%{opacity:.85;transform:translateY(108vh) rotate(720deg)}}
 @keyframes catRun{0%{transform:translateX(-18vw)}100%{transform:translateX(118vw)}}
