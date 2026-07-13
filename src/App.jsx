@@ -1555,7 +1555,7 @@ function HandbookPage({ open, onClose, isMgr }) {
   const [meta, setMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  const [viewW, setViewW] = useState(0);              // lebar area render (px, tanpa padding)
+  const [viewW, setViewW] = useState(() => (typeof window !== "undefined" ? Math.max(200, Math.min(window.innerWidth, 896) - 24) : 360)); // lebar area render (px, tanpa padding) — default langsung dari layar biar Safari tak blank saat pengukuran telat
   const [baseRatio, setBaseRatio] = useState(1.414);  // rasio tinggi/lebar halaman (dari hal. 1)
   const [renderSet, setRenderSet] = useState(() => new Set()); // halaman yg dirender (virtualisasi)
 
@@ -1663,13 +1663,16 @@ function HandbookPage({ open, onClose, isMgr }) {
     if (open && !loadedRef.current && phase === "idle") loadPdf();
   }, [open]);
 
-  // ukur lebar area render; ganti cssWidth otomatis memicu HbPage render ulang (resize/rotate)
+  // ukur lebar area render via ResizeObserver (lebih andal di Safari drpd pengukuran sekali jalan)
   useEffect(() => {
     if (phase !== "ready") return;
-    const measure = () => { const el = scrollRef.current; if (el) setViewW(Math.max(200, el.clientWidth - 24)); };
+    const el = scrollRef.current; if (!el) return;
+    const measure = () => { const w = el.clientWidth; if (w > 0) setViewW(Math.max(200, w - 24)); };
     measure();
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(measure); ro.observe(el); }
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", measure); };
   }, [phase, open]);
 
   // virtualisasi: render hanya halaman yang dekat viewport (buffer 1200px atas/bawah)
@@ -1839,7 +1842,7 @@ function HandbookPage({ open, onClose, isMgr }) {
       </div>
 
       {/* viewer — continuous scroll (semua halaman menyambung, virtualisasi) */}
-      <div ref={scrollRef} className="flex-1 overflow-auto" onClick={() => setShowResults(false)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto" style={{ WebkitOverflowScrolling: "touch" }} onClick={() => setShowResults(false)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         {phase === "loading" && (
           <div className="w-full max-w-[520px] mx-auto mt-6 px-3">
             <div className="s-soft rounded-xl animate-pulse" style={{ aspectRatio: "1 / 1.414" }} />
@@ -1855,8 +1858,8 @@ function HandbookPage({ open, onClose, isMgr }) {
             {!isMgr && <p className="text-xs s-muted mt-3">Hubungi admin untuk mengunggah handbook.</p>}
           </div>
         )}
-        {phase === "ready" && viewW > 0 && (
-          <div className="px-3 py-3" style={{ width: "max-content", minWidth: "100%" }}>
+        {phase === "ready" && (
+          <div className="px-3 py-3 mx-auto" style={{ width: "max-content", minWidth: "100%" }}>
             {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
               <HbPage key={n} pdf={pdfRef.current} num={n} cssWidth={Math.round(viewW * zoom)} baseRatio={baseRatio} shouldRender={renderSet.has(n)} />
             ))}
