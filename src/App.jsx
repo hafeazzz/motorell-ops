@@ -472,7 +472,6 @@ function MotorellOps() {
 .mr-header::before{content:"";position:absolute;top:-50%;right:-8%;width:72%;height:210%;background:radial-gradient(closest-side,rgba(249,115,22,.42),transparent 70%);pointer-events:none}
 .mr-header::after{content:"";position:absolute;left:-14%;bottom:-75%;width:58%;height:180%;background:radial-gradient(closest-side,rgba(56,189,248,.16),transparent 72%);pointer-events:none}
 .mr-header>*{position:relative;z-index:1}
-.mr-header button{-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
 /* ===== BLACK GRANITE (dark) — hitam elegan berkedalaman + grain + kaca ===== */
 .mr-app.dark.s-bg,.mr-app.dark .s-bg{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.2'/%3E%3C/svg%3E"),radial-gradient(125% 85% at 50% -12%,#16181f 0%,#0b0c11 44%,#070709 100%)}
 .mr-app.dark .s-surface{background-color:rgba(15,16,22,.66);background-image:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,0) 44%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 18px 42px -22px rgba(0,0,0,.92)}
@@ -540,11 +539,11 @@ button:active{transform:scale(.97)}
         <header className="mr-header text-white px-5 pt-5 pb-6 rounded-b-3xl sticky top-0 z-30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6 cursor-pointer select-none" onClick={onLogoTap} draggable="false" /></div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setHandbookOpen(true)} className="p-2 rounded-xl bg-white/10" title="Handbook"><BookOpen size={16} /></button>
-              <button onClick={() => setChatOpen(true)} className="p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
-              <button onClick={toggleDark} className="p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
-              <button onClick={() => setProfile(true)}><Avatar user={me} size={34} /></button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={() => setHandbookOpen(true)} aria-label="Handbook" title="Handbook" className="shrink-0 p-2 rounded-xl bg-white/10 ring-1 ring-white/15 grid place-items-center"><BookOpen size={16} strokeWidth={2.4} color="currentColor" /></button>
+              <button type="button" onClick={() => setChatOpen(true)} aria-label="Chat" className="shrink-0 p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
+              <button type="button" onClick={toggleDark} aria-label="Ganti tema" className="shrink-0 p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
+              <button type="button" onClick={() => setProfile(true)} aria-label="Profil" className="shrink-0"><Avatar user={me} size={34} /></button>
             </div>
           </div>
         </header>
