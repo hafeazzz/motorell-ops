@@ -1012,8 +1012,10 @@ function canSeeProfit(me, unit) {
 }
 
 /* Estimasi keuntungan dari motor yang SIAP JUAL tapi belum terjual.
-   Komisi penjualan tidak dihardcode 400rb: dihitung dari jumlah orang yang dapat bonus
-   penjualan (state.users[].saleBonus) × SALE_BONUS — sekarang Omen + Beceng = 2 × 200rb.
+   Bersih = profit kotor − komisi penjualan − jatah investor.
+   Komisi tidak dihardcode 400rb: dihitung dari jumlah orang yang dapat bonus penjualan
+   (state.users[].saleBonus) × SALE_BONUS — sekarang Omen + Beceng = 2 × 200rb.
+   Jatah investor dihitung per unit dari investorShare (%), sama seperti di UangTab.
    Unit yang belum diisi harga jual tidak bisa diestimasi, jadi dipisah (bukan dianggap 0). */
 function estimateProfit(state) {
   const ready = (state.units || []).filter((u) => u.status === "siap");
@@ -1022,14 +1024,14 @@ function estimateProfit(state) {
   const bonusPeople = (state.users || []).filter((u) => u.saleBonus).length;
   const commissionPerUnit = bonusPeople * SALE_BONUS;
   const commission = withPrice.length * commissionPerUnit;
-  // Jatah investor belum dipotong di sini — cuma dilaporkan, biar rumusnya tetap lurus.
   const investorCut = withPrice.reduce((a, u) => {
     const share = +u.investorShare || 0;
     if (!u.investorCode || share <= 0) return a;
     const p = u.sellPrice - u.buyPrice - expByUnit(state, u.id);
-    return a + (p > 0 ? Math.round((p * share) / 100) : 0);
+    return a + (p > 0 ? Math.round((p * share) / 100) : 0); // motor rugi tidak dipotong investor
   }, 0);
-  return { ready: ready.length, counted: withPrice.length, noPrice: ready.length - withPrice.length, gross, bonusPeople, commissionPerUnit, commission, net: gross - commission, investorCut };
+  const investorUnits = withPrice.filter((u) => u.investorCode && (+u.investorShare || 0) > 0).length;
+  return { ready: ready.length, counted: withPrice.length, noPrice: ready.length - withPrice.length, gross, bonusPeople, commissionPerUnit, commission, investorCut, investorUnits, net: gross - commission - investorCut };
 }
 
 // Angka Rupiah dengan animasi hitung-naik (pola sama seperti CountVal, tapi hasilnya diformat rp()).
@@ -1337,17 +1339,13 @@ function ProfitEstimate({ state }) {
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between gap-2"><span className="s-muted">Profit kotor · {e.counted} motor siap jual</span><span className="font-bold shrink-0">{rp(e.gross)}</span></div>
             <div className="flex justify-between gap-2"><span className="s-muted">Komisi penjualan · {e.counted} × {rp(e.commissionPerUnit)} ({e.bonusPeople} orang)</span><span className="font-bold shrink-0 text-rose-500">-{rp(e.commission)}</span></div>
+            <div className="flex justify-between gap-2"><span className="s-muted">Jatah investor{e.investorUnits > 0 ? ` · ${e.investorUnits} motor` : ""}</span><span className="font-bold shrink-0 text-rose-500">-{rp(e.investorCut)}</span></div>
           </div>
           <div className="mt-3 pt-3 border-t s-border flex items-center justify-between gap-2">
             <span className="text-xs font-bold">Perkiraan bersih</span>
             <span className={`text-xl font-extrabold shrink-0 ${e.net >= 0 ? "text-emerald-500" : "text-rose-500"}`}><RpCount v={e.net} /></span>
           </div>
-          {(e.noPrice > 0 || e.investorCut > 0) && (
-            <p className="text-[10px] s-muted mt-2 leading-relaxed">
-              {e.noPrice > 0 && <>{e.noPrice} motor siap jual belum diisi harga jual — belum ikut dihitung. </>}
-              {e.investorCut > 0 && <>Belum dipotong jatah investor (± {rp(e.investorCut)}).</>}
-            </p>
-          )}
+          {e.noPrice > 0 && <p className="text-[10px] s-muted mt-2">{e.noPrice} motor siap jual belum diisi harga jual — belum ikut dihitung.</p>}
         </>
       )}
     </Card>
