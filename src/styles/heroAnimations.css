@@ -1,0 +1,26 @@
+/* Hero sun/moon: continuous pulsing loop, GPU-only (transform + opacity), per time-of-day color. */
+.hero-sunmoon {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  pointer-events: none;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 0 10px currentColor);
+}
+.hero-sun-pulse {
+  animation: heroSunPulse 3s ease-in-out infinite;
+}
+.hero-moon-pulse {
+  animation: heroMoonPulse 4s ease-in-out infinite;
+}
+@keyframes heroSunPulse {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+@keyframes heroMoonPulse {
+  0%, 100% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-sun-pulse, .hero-moon-pulse { animation: none; }
+}
