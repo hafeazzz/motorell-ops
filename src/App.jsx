@@ -146,6 +146,10 @@ const MCAT_COLOR = { "ADS": "amber", "TESTIMONI": "emerald", "LONG YOUTUBE": "ro
 const PAL = ["#f97316", "#3b82f6", "#10b981", "#a855f7", "#eab308", "#ef4444", "#14b8a6"];
 const STORE_KEY = "motorell-state-v3";
 const THEME_KEY = "motorell-theme";
+// Ingat siapa yang login di perangkat ini. `me` cuma state React, jadi tanpa ini SEMUA reload
+// (refresh, auto-refresh waktu ada deploy baru, app crash) melempar orang balik ke layar login.
+// Disimpan id-nya saja, datanya tetap dibaca dari state bersama. Dihapus oleh comprehensiveLogout().
+const ME_KEY = "motorell-me";
 const SEED_V = 7;
 
 /* ============ Seed ============ */
@@ -382,6 +386,32 @@ class ErrorBoundary extends React.Component {
   }
 }
 export default function App() { return <ErrorBoundary><MotorellOps /></ErrorBoundary>; }
+
+/* Pagar error khusus Handbook. Tanpa ini, error apa pun dari pdf.js (library-nya dimuat dari CDN
+   & merender canvas besar) nembus ke ErrorBoundary utama → SELURUH app diganti layar error yang
+   satu-satunya tombolnya reload → `me` (state React, tidak persisten) hilang → orang terlempar ke
+   layar login. Dipagari di sini, handbook-nya saja yang gagal; app tetap hidup & tetap login. */
+class HandbookErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err, info) { try { console.error("Handbook error:", err, info); } catch (e) {} }
+  render() {
+    if (!this.state.err) return this.props.children;
+    const tutup = () => { this.setState({ err: null }); if (this.props.onClose) this.props.onClose(); };
+    return (
+      <div className="fixed inset-0 z-[56] s-bg flex flex-col items-center justify-center px-8 text-center">
+        <div className="w-14 h-14 rounded-2xl s-soft grid place-items-center mb-3"><BookOpen size={24} className="text-amber-500" /></div>
+        <p className="font-bold">Handbook gagal dibuka</p>
+        <p className="text-xs s-muted mt-1.5 max-w-xs break-words">{String((this.state.err && (this.state.err.message || this.state.err)) || "Error tidak diketahui")}</p>
+        <p className="text-[11px] s-muted mt-2 max-w-xs">Bagian lain app tetap jalan — kamu tidak perlu login ulang.</p>
+        <div className="grid grid-cols-2 gap-2 mt-5 w-full max-w-xs">
+          <Btn variant="ghost" onClick={tutup}>Tutup</Btn>
+          <Btn onClick={() => { try { location.reload(); } catch (e) { tutup(); } }}>Muat ulang</Btn>
+        </div>
+      </div>
+    );
+  }
+}
 function MotorellOps() {
   const [state, setState] = useState(null);
   const [me, setMe] = useState(null);
@@ -401,7 +431,19 @@ function MotorellOps() {
   const [welcome, setWelcome] = useState(null);
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [toast, setToast] = useState(null); // toast alarm istirahat
-  const handleLogin = (u) => { setMe(u); setWelcome(u); };
+  const handleLogin = (u) => { try { localStorage.setItem(ME_KEY, u.id); } catch (e) {} setMe(u); setWelcome(u); };
+
+  // Pulihkan sesi begitu state kebaca. Bukan login baru → sengaja tanpa WelcomeOverlay.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!state || me || restored.current) return;
+    restored.current = true;
+    try {
+      const id = localStorage.getItem(ME_KEY);
+      const u = id && state.users.find((x) => x.id === id);
+      if (u) setMe(u); // user yang sudah dihapus dari tim tidak akan ketemu → tetap di layar login
+    } catch (e) {}
+  }, [state, me]);
 
   useServiceWorker();  // daftar SW + auto-reload saat deploy baru aktif
   useVersionCheck();   // bandingkan build id dgn /version.json tiap 5 menit
@@ -722,7 +764,9 @@ button:active{transform:scale(.97)}
       )}
 
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} chatTick={chatTick} />
-      <HandbookPage open={handbookOpen} onClose={() => setHandbookOpen(false)} isMgr={isMgr} />
+      <HandbookErrorBoundary onClose={() => setHandbookOpen(false)}>
+        <HandbookPage open={handbookOpen} onClose={() => setHandbookOpen(false)} isMgr={isMgr} />
+      </HandbookErrorBoundary>
       <InspeksiPage open={inspeksiOpen} onClose={() => setInspeksiOpen(false)} me={me} update={update} state={state} onOpenUnit={(id) => { setInspeksiOpen(false); goTab("uang"); setFocusUnit(id); }} />
       <FunFX />
       {welcome && <WelcomeOverlay user={welcome} onDone={() => setWelcome(null)} />}
