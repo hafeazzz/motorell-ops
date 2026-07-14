@@ -1879,17 +1879,21 @@ function ArsipTab({ state, me, update }) {
       )}
       <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
-      <InspectionDetailModal inspection={openInspection} state={state} onClose={() => setOpenInspection(null)} />
+      <InspectionDetailModal inspection={openInspection} state={state} me={me} update={update} onClose={() => setOpenInspection(null)} />
     </div>
   );
 }
-function InspectionDetailModal({ inspection, state, onClose }) {
+function InspectionDetailModal({ inspection, state, me, update, onClose }) {
   const [zoom, setZoom] = useState("");
+  const [confirmDel, setConfirmDel] = useState(false);
+  useEffect(() => { setConfirmDel(false); }, [inspection && inspection.id]);
   if (!inspection) return null;
   const h = inspection;
   const unit = h.unitId && state.units.find((u) => u.id === h.unitId);
   const vals = Object.values(h.items || {});
   const cnt = (k) => vals.filter((v) => v && v.status === k).length;
+  const isMgr = me && (me.role === "owner" || me.role === "admin");
+  const delInspection = () => { update((s) => { s.inspections = s.inspections.filter((x) => x.id !== h.id); return s; }); setConfirmDel(false); onClose(); };
   return (
     <Modal open={!!inspection} onClose={onClose} title="Detail inspeksi">
       <div className="flex items-center justify-between gap-2 mb-3">
@@ -1938,6 +1942,21 @@ function InspectionDetailModal({ inspection, state, onClose }) {
         <div className="mb-1">
           <p className="text-xs font-bold s-muted mb-1.5">Foto catatan</p>
           <div className="flex flex-wrap gap-2">{h.notePhotos.map((p, i) => <img key={i} src={p} onClick={() => setZoom(p)} className="note-photo-thumb" alt="" />)}</div>
+        </div>
+      )}
+      {isMgr && update && (
+        <div className="mr-noprint mt-3 pt-3 border-t s-border">
+          {!confirmDel ? (
+            <button onClick={() => setConfirmDel(true)} className="w-full text-rose-500 text-sm font-semibold py-2 flex items-center justify-center gap-1.5"><Trash2 size={15} />Hapus riwayat inspeksi ini</button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-center s-muted">
+                Yakin hapus riwayat inspeksi <b className="s-text">{unit ? unit.name : (h.name || "ini")}</b>?
+                {unit && <> Motor <b className="s-text">{unit.name}</b> di Arsip &amp; Keuangan tidak ikut terhapus — cuma catatan inspeksi ini.</>}
+              </p>
+              <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmDel(false)}>Batal</Btn><button onClick={delInspection} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white active:scale-[0.97] transition">Hapus</button></div>
+            </div>
+          )}
         </div>
       )}
       <Lightbox src={zoom} onClose={() => setZoom("")} />
