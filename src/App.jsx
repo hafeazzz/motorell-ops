@@ -6,7 +6,7 @@ import {
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
   MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge,
-  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck
+  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -456,9 +456,9 @@ function MotorellOps() {
     { id: "uang", label: "Keuangan", icon: Wallet },
     { id: "media", label: "Media", icon: Video },
     ...(isOwner
-      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
+      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }, { id: "arsip", label: "Arsip", icon: Archive }]
       : isAdmin
-      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
+      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }, { id: "arsip", label: "Arsip", icon: Archive }]
       : [{ id: "task", label: "Task", icon: CheckSquare }]),
   ];
   const order = tabs.map((t) => t.id);
@@ -618,6 +618,7 @@ button:active{transform:scale(.97)}
   from { opacity: 0; transform: translateY(-40px) scale(0.6); } /* Adjusted animation */
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+.note-photo-thumb{width:80px;height:80px;border-radius:12px;object-fit:cover;cursor:zoom-in;flex-shrink:0}
 `}</style>
 
       <Fade delay={0}>
@@ -650,6 +651,7 @@ button:active{transform:scale(.97)}
           {tab === "task" && (isOwner ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
           {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} />}
           {tab === "laporan" && <LaporanTab state={state} />}
+          {tab === "arsip" && <ArsipTab state={state} me={me} update={update} />}
         </div>
       </main>
 
@@ -1222,6 +1224,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
   const byCat = items.reduce((m, e) => ({ ...m, [e.cat]: (m[e.cat] || 0) + e.amount }), {});
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
   const [confirmDel, setConfirmDel] = useState(false);
+  const [zoom, setZoom] = useState("");
   useEffect(() => { setConfirmDel(false); }, [unitId]);
   const setField = (k, v) => update((s) => { s.units.find((u) => u.id === unitId)[k] = v; return s; });
   const setStatus = (status) => {
@@ -1250,6 +1253,9 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
             <p className="text-xs font-bold flex items-center gap-1.5 mb-1.5"><ClipboardCheck size={14} className="ac-text" />Hasil inspeksi</p>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold mb-1"><span className="text-emerald-500">Baik {cnt("baik")}</span><span className="text-amber-500">Perlu perhatian {cnt("perhatian")}</span><span className="text-rose-500">Bermasalah {cnt("masalah")}</span></div>
             {ir.notes && <p className="text-[11px] s-muted break-words">Catatan: {ir.notes}</p>}
+            {ir.notePhotos && ir.notePhotos.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">{ir.notePhotos.map((p, i) => <img key={i} src={p} onClick={() => setZoom(p)} className="note-photo-thumb" alt="" />)}</div>
+            )}
           </div>
         );
       })()}
@@ -1299,6 +1305,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
           </div>
         )}
       </div>
+      <Lightbox src={zoom} onClose={() => setZoom("")} />
     </Modal>
   );
 }
@@ -1609,6 +1616,128 @@ function LaporanTab({ state }) {
         <p className="text-[10px] s-muted mt-3">Bolos live dihitung per tim (bukan per orang) = hari tim hadir tapi nggak live TikTok. Laporan update otomatis tiap bulan, bisa cek bulan sebelumnya pakai panah di atas.</p>
       </Card>
     </div>
+  );
+}
+
+/* ============ Arsip Motor (motor terjual & riwayat inspeksi) ============ */
+function ArsipTab({ state, me, update }) {
+  const [sub, setSub] = useState("terjual");
+  const [detail, setDetail] = useState(null);
+  const [expModal, setExpModal] = useState(null);
+  const [openInspection, setOpenInspection] = useState(null);
+  const [soldShow, setSoldShow] = useState(20);
+  const [inspShow, setInspShow] = useState(20);
+  const sold = [...state.units].filter((u) => u.status === "terjual").sort((a, b) => (b.soldAt || "").localeCompare(a.soldAt || ""));
+  const inspected = state.inspections || [];
+  const dateLabel = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-";
+  return (
+    <div className="space-y-3 pt-1">
+      <p className="font-bold text-lg pt-1">Arsip Motor</p>
+      <div className="grid grid-cols-2 gap-1 s-soft rounded-xl p-1">
+        <button onClick={() => setSub("terjual")} className={`py-2 rounded-lg text-xs font-bold transition ${sub === "terjual" ? "ac-bg text-white" : "s-muted"}`}>Motor Terjual ({sold.length})</button>
+        <button onClick={() => setSub("diinspeksi")} className={`py-2 rounded-lg text-xs font-bold transition ${sub === "diinspeksi" ? "ac-bg text-white" : "s-muted"}`}>Motor Diinspeksi ({inspected.length})</button>
+      </div>
+      {sub === "terjual" && (
+        <div className="space-y-2">
+          {sold.length === 0 && <p className="text-center text-sm s-muted py-8">Belum ada motor terjual.</p>}
+          {sold.slice(0, soldShow).map((u) => {
+            const profit = (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id);
+            return (
+              <Card key={u.id} className="p-3">
+                <div className="flex items-center gap-3 cursor-pointer active:scale-[0.99] transition" onClick={() => setDetail(u.id)}>
+                  {u.photo ? <img src={u.photo} className="w-12 h-12 rounded-lg object-cover shrink-0" alt="" /> : <div className="w-12 h-12 rounded-lg s-soft grid place-items-center shrink-0"><Bike size={18} className="s-muted" /></div>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">{u.name}</p>
+                    <p className="text-[11px] s-muted">{u.plate ? u.plate + " · " : ""}Terjual {dateLabel(u.soldAt)}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold">{rp(u.sellPrice || 0)}</p>
+                    <p className={`text-[10px] font-semibold ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? "+" : ""}{rp(profit)}</p>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+          {sold.length > soldShow && <Btn variant="ghost" onClick={() => setSoldShow((n) => n + 20)} className="w-full">Tampilkan lebih ({sold.length - soldShow} lagi)</Btn>}
+        </div>
+      )}
+      {sub === "diinspeksi" && (
+        <div className="space-y-2">
+          {inspected.length === 0 && <p className="text-center text-sm s-muted py-8">Belum ada riwayat inspeksi.</p>}
+          {inspected.slice(0, inspShow).map((h) => {
+            const unit = h.unitId && state.units.find((u) => u.id === h.unitId);
+            return (
+              <Card key={h.id} className="p-3">
+                <div className="flex items-center gap-3 cursor-pointer active:scale-[0.99] transition" onClick={() => setOpenInspection(h)}>
+                  {h.notePhotos && h.notePhotos.length > 0 ? <img src={h.notePhotos[0]} className="w-12 h-12 rounded-lg object-cover shrink-0" alt="" /> : <div className="w-12 h-12 rounded-lg s-soft grid place-items-center shrink-0"><ClipboardCheck size={18} className="s-muted" /></div>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">{unit ? unit.name : (h.name || "Motor (tanpa nama)")}</p>
+                    <p className="text-[11px] s-muted">{h.byName || "?"} · {dateLabel(h.date)}</p>
+                  </div>
+                  <Tag color={h.decision === "beli" ? "emerald" : "rose"}>{h.decision === "beli" ? "Dibeli" : "Tidak"}</Tag>
+                </div>
+              </Card>
+            );
+          })}
+          {inspected.length > inspShow && <Btn variant="ghost" onClick={() => setInspShow((n) => n + 20)} className="w-full">Tampilkan lebih ({inspected.length - inspShow} lagi)</Btn>}
+        </div>
+      )}
+      <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
+      <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
+      <InspectionDetailModal inspection={openInspection} state={state} onClose={() => setOpenInspection(null)} />
+    </div>
+  );
+}
+function InspectionDetailModal({ inspection, state, onClose }) {
+  const [zoom, setZoom] = useState("");
+  if (!inspection) return null;
+  const h = inspection;
+  const unit = h.unitId && state.units.find((u) => u.id === h.unitId);
+  const vals = Object.values(h.items || {});
+  const cnt = (k) => vals.filter((v) => v && v.status === k).length;
+  return (
+    <Modal open={!!inspection} onClose={onClose} title="Detail inspeksi">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="min-w-0">
+          <p className="font-bold truncate">{unit ? unit.name : (h.name || "Motor (tanpa nama)")}</p>
+          <p className="text-[11px] s-muted">{h.byName || "?"} · {new Date(h.date + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
+        </div>
+        <Tag color={h.decision === "beli" ? "emerald" : "rose"}>{h.decision === "beli" ? "Dibeli" : "Tidak dibeli"}</Tag>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold mb-3">
+        <span className="text-emerald-500">Baik {cnt("baik")}</span><span className="text-amber-500">Perlu perhatian {cnt("perhatian")}</span><span className="text-rose-500">Bermasalah {cnt("masalah")}</span>
+      </div>
+      <div className="space-y-3 mb-3">
+        {INSPEKSI_SECTIONS.map((sec) => {
+          const rows = sec.items.map((it) => ({ it, key: sec.key + ":" + it, v: (h.items || {})[sec.key + ":" + it] })).filter((r) => r.v && r.v.status);
+          if (!rows.length) return null;
+          return (
+            <div key={sec.key}>
+              <p className="text-xs font-bold s-muted mb-1.5">{sec.key} · {sec.title}</p>
+              <div className="space-y-1">
+                {rows.map(({ it, key, v }) => {
+                  const st = INS_STATUS.find((s) => s.k === v.status);
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-2 s-soft rounded-lg px-2.5 py-1.5">
+                      <span className="text-xs flex items-center gap-2 min-w-0">{v.photo && <img src={v.photo} onClick={() => setZoom(v.photo)} className="w-8 h-8 rounded-md object-cover shrink-0 cursor-zoom-in" alt="" />}<span className="truncate">{it}</span></span>
+                      <span className="text-[10px] font-bold shrink-0" style={{ color: st?.c }}>{st?.l}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {h.notes && <div className="mb-3"><p className="text-xs font-bold s-muted mb-1">Catatan</p><p className="text-sm s-soft rounded-xl p-3 break-words">{h.notes}</p></div>}
+      {h.notePhotos && h.notePhotos.length > 0 && (
+        <div className="mb-1">
+          <p className="text-xs font-bold s-muted mb-1.5">Foto catatan</p>
+          <div className="flex flex-wrap gap-2">{h.notePhotos.map((p, i) => <img key={i} src={p} onClick={() => setZoom(p)} className="note-photo-thumb" alt="" />)}</div>
+        </div>
+      )}
+      <Lightbox src={zoom} onClose={() => setZoom("")} />
+    </Modal>
   );
 }
 
@@ -2096,25 +2225,31 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
   const [name, setName] = useState("");
   const [items, setItems] = useState({});
   const [notes, setNotes] = useState("");
+  const [notePhotos, setNotePhotos] = useState([]);
+  const [zoom, setZoom] = useState("");
   const [openSec, setOpenSec] = useState("A");
   const [saving, setSaving] = useState(false);
   const photoRef = useRef(null); const photoForRef = useRef(null);
-  const reset = () => { setName(""); setItems({}); setNotes(""); setOpenSec("A"); };
+  const notePhotoRef = useRef(null);
+  const reset = () => { setName(""); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); };
   const setStatus = (key, st) => setItems((p) => ({ ...p, [key]: { ...(p[key] || {}), status: p[key] && p[key].status === st ? undefined : st } }));
   const pickPhoto = (key) => { photoForRef.current = key; if (photoRef.current) photoRef.current.click(); };
   const onPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const key = photoForRef.current; photoForRef.current = null; if (!f || !key) return; const data = await compress(f, 900, 0.5); if (data) setItems((p) => ({ ...p, [key]: { ...(p[key] || {}), photo: data } })); };
+  const addNotePhoto = () => notePhotoRef.current && notePhotoRef.current.click();
+  const onNotePhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 900, 0.5); if (data) setNotePhotos((p) => [...p, data]); };
+  const delNotePhoto = (i) => setNotePhotos((p) => p.filter((_, idx) => idx !== i));
   const checkedCount = (sec) => sec.items.filter((it) => items[sec.key + ":" + it] && items[sec.key + ":" + it].status).length;
   const totalChecked = INSPEKSI_SECTIONS.reduce((a, s) => a + checkedCount(s), 0);
   const decide = (buy) => {
     if (saving) return; setSaving(true);
-    const base = { id: uid(), date: today(), by: me.id, byName: me.name, items, notes: notes.trim(), name: name.trim() };
+    const base = { id: uid(), date: today(), by: me.id, byName: me.name, items, notes: notes.trim(), notePhotos, name: name.trim() };
     if (!buy) {
       update((s) => { s.inspections.unshift({ ...base, decision: "tidak", unitId: null }); return s; });
       setSaving(false); reset(); onClose(); alert("Inspeksi disimpan sebagai riwayat (tidak dibeli).");
       return;
     }
     const newId = uid(); // dibuat di luar updater supaya tak balapan dengan setState async
-    update((s) => { createUnit(s, { name: name.trim() || "Motor (inspeksi)", inspectionResult: { items, notes: notes.trim(), date: today(), by: me.id } }, me.id, newId); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; });
+    update((s) => { createUnit(s, { name: name.trim() || "Motor (inspeksi)", inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, me.id, newId); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; });
     setSaving(false); reset(); onClose();
     if (onOpenUnit) onOpenUnit(newId);
   };
@@ -2159,6 +2294,15 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
           );
         })}
         <Field label="Catatan tambahan"><textarea className={inputCls + " min-h-[80px]"} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Catatan bebas tentang kondisi motor…" /></Field>
+        <div className="flex flex-wrap gap-2 -mt-1">
+          {notePhotos.map((p, i) => (
+            <div key={i} className="relative">
+              <img src={p} onClick={() => setZoom(p)} className="note-photo-thumb" alt="" />
+              <button onClick={() => delNotePhoto(i)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white grid place-items-center active:scale-90"><X size={11} /></button>
+            </div>
+          ))}
+          <button onClick={addNotePhoto} className="note-photo-thumb s-soft border border-dashed s-border grid place-items-center"><Camera size={18} className="s-muted" /></button>
+        </div>
         <Card className="p-4">
           <p className="font-bold text-center mb-3">Motor ini jadi dibeli?</p>
           <div className="grid grid-cols-2 gap-2">
@@ -2170,8 +2314,9 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
           <div className="pt-1">
             <p className="text-xs font-bold s-muted mb-2">Riwayat inspeksi</p>
             <div className="space-y-2">{history.slice(0, 30).map((h) => { const un = h.unitId && state.units.find((u) => u.id === h.unitId); return (
-              <Card key={h.id} className="p-3 flex items-center justify-between gap-2">
-                <div className="min-w-0"><p className="text-sm font-semibold truncate">{un ? un.name : (h.name || (h.decision === "beli" ? "Unit dibeli" : "Tidak dibeli"))}</p><p className="text-[11px] s-muted">{new Date(h.date + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{h.byName ? " · " + h.byName : ""}</p></div>
+              <Card key={h.id} className="p-3 flex items-center gap-2">
+                {h.notePhotos && h.notePhotos.length > 0 && <img src={h.notePhotos[0]} onClick={() => setZoom(h.notePhotos[0])} className="w-9 h-9 rounded-lg object-cover shrink-0 cursor-zoom-in" alt="" />}
+                <div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{un ? un.name : (h.name || (h.decision === "beli" ? "Unit dibeli" : "Tidak dibeli"))}</p><p className="text-[11px] s-muted">{new Date(h.date + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{h.byName ? " · " + h.byName : ""}</p></div>
                 <Tag color={h.decision === "beli" ? "emerald" : "rose"}>{h.decision === "beli" ? "Dibeli" : "Tidak"}</Tag>
               </Card>
             ); })}</div>
@@ -2179,6 +2324,8 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
         )}
       </div>
       <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+      <input ref={notePhotoRef} type="file" accept="image/*" className="hidden" onChange={onNotePhoto} />
+      <Lightbox src={zoom} onClose={() => setZoom("")} />
     </div>
   );
 }
