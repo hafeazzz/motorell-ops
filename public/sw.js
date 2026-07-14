@@ -63,6 +63,10 @@ self.addEventListener("push", (event) => {
       badge: "/icon.png",
       tag: data.tag || undefined,
       renotify: true,
+      // Getar di HP. Catatan: SW TIDAK bisa memainkan audio sendiri (tidak ada AudioContext di
+      // service worker, dan opsi `sound` sudah tidak didukung browser) — bunyi yang terdengar
+      // adalah nada notifikasi bawaan OS. Nada WebAudio cuma bisa main saat app-nya kebuka.
+      vibrate: data.vibrate || [200, 100, 200],
       data: { url: data.url || "/" },
     };
     await self.registration.showNotification(title, options);
