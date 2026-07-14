@@ -515,17 +515,18 @@ function MotorellOps() {
     { id: "absen", label: "Absen", icon: Clock },
     { id: "uang", label: "Keuangan", icon: Wallet },
     { id: "media", label: "Media", icon: Video },
-    ...(isOwner
-      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }, { id: "arsip", label: "Arsip", icon: Archive }]
-      : isAdmin
-      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }, { id: "arsip", label: "Arsip", icon: Archive }]
+    ...(isMgr
+      ? [{ id: "task", label: "Task", icon: CheckSquare }, { id: "tim", label: "Tim", icon: Users }, { id: "laporan", label: "Laporan", icon: PieIcon }]
       : [{ id: "task", label: "Task", icon: CheckSquare }]),
+    // Arsip dibuka untuk SEMUA role (transparansi). Angka profit-nya sendiri tetap dibatasi —
+    // lihat canSeeProfit(): cuma owner/admin + inspektur motor itu sendiri.
+    { id: "arsip", label: "Arsip", icon: Archive },
   ];
   const order = tabs.map((t) => t.id);
   const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
 
   return (
-    <div onClick={clickSound} style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} className={`mr-app ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
+    <div onClick={clickSound} className={`mr-app mr-shell ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
 .mr-app{--bg:#edf0f5;--surface:#ffffff;--soft:#eef1f6;--border:#e5e9f0;--text:#0f172a;--muted:#64748b;--header:#0f172a;--accent:#1e293b;--accent-contrast:#ffffff}
 .mr-app.dark{--bg:#08090c;--surface:#0d0e13;--soft:#15171e;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#040405;--accent:#f5f7fa;--accent-contrast:#0b0c10}
@@ -697,6 +698,24 @@ button:active{transform:scale(.97)}
 .mr-toast.toast-end{background:linear-gradient(135deg,#f97316,#ea580c)}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,24px) scale(.92)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @media (prefers-reduced-motion:reduce){.live-dot,.monitoring-panel,.mr-toast{animation:none}}
+
+/* ===== ruang bawah supaya navbar mengambang tidak menutupi konten ===== */
+/* Nav-nya fixed: di HP nempel ke bawah, di desktop mengambang (bottom-6, tombolnya lebih besar),
+   jadi ruang yang dibutuhkan beda — makanya pakai media query, bukan satu angka. */
+.mr-shell{padding-bottom:calc(5.5rem + env(safe-area-inset-bottom))}
+@media(min-width:768px){.mr-shell{padding-bottom:9rem}}
+
+/* ===== cetak / simpan PDF (dipakai tombol di Detail inspeksi) =====
+   Trik visibility (bukan display) supaya isi modal tetap kebaca walau induknya disembunyikan. */
+@media print{
+  body *{visibility:hidden!important}
+  .mr-bdrop,.mr-bdrop *{visibility:visible!important}
+  .mr-bdrop{position:absolute!important;inset:0!important;padding:0!important;overflow:visible!important;background:#fff!important}
+  .mr-bdrop *{color:#111!important;background-color:transparent!important;box-shadow:none!important;border-color:#ddd!important}
+  .mr-bdrop .mr-modal-in{max-width:none!important;border-radius:0!important;animation:none!important}
+  .mr-scroll{max-height:none!important;overflow:visible!important}
+  .mr-noprint{display:none!important}
+}
 `}</style>
 
       <Fade delay={0}>
@@ -983,6 +1002,48 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
 /* ============ Beranda ============ */
 function expByUnit(state, unitId) { return state.expenses.filter((e) => e.unitId === unitId).reduce((a, e) => a + e.amount, 0); }
 
+/* Siapa boleh lihat angka profit sebuah unit: owner/admin, plus inspektur yang dulu memeriksa
+   motor itu (unit hasil alur Inspeksi menyimpan `inspectionResult.by`). Peran di app ini cuma
+   owner/admin/staff — tidak ada role "inspector"/"viewer" tersendiri. */
+function canSeeProfit(me, unit) {
+  if (!me) return false;
+  if (me.role === "owner" || me.role === "admin") return true;
+  return !!(unit && unit.inspectionResult && unit.inspectionResult.by === me.id);
+}
+
+/* Estimasi keuntungan dari motor yang SIAP JUAL tapi belum terjual.
+   Komisi penjualan tidak dihardcode 400rb: dihitung dari jumlah orang yang dapat bonus
+   penjualan (state.users[].saleBonus) × SALE_BONUS — sekarang Omen + Beceng = 2 × 200rb.
+   Unit yang belum diisi harga jual tidak bisa diestimasi, jadi dipisah (bukan dianggap 0). */
+function estimateProfit(state) {
+  const ready = (state.units || []).filter((u) => u.status === "siap");
+  const withPrice = ready.filter((u) => (+u.sellPrice || 0) > 0);
+  const gross = withPrice.reduce((a, u) => a + (u.sellPrice - u.buyPrice - expByUnit(state, u.id)), 0);
+  const bonusPeople = (state.users || []).filter((u) => u.saleBonus).length;
+  const commissionPerUnit = bonusPeople * SALE_BONUS;
+  const commission = withPrice.length * commissionPerUnit;
+  // Jatah investor belum dipotong di sini — cuma dilaporkan, biar rumusnya tetap lurus.
+  const investorCut = withPrice.reduce((a, u) => {
+    const share = +u.investorShare || 0;
+    if (!u.investorCode || share <= 0) return a;
+    const p = u.sellPrice - u.buyPrice - expByUnit(state, u.id);
+    return a + (p > 0 ? Math.round((p * share) / 100) : 0);
+  }, 0);
+  return { ready: ready.length, counted: withPrice.length, noPrice: ready.length - withPrice.length, gross, bonusPeople, commissionPerUnit, commission, net: gross - commission, investorCut };
+}
+
+// Angka Rupiah dengan animasi hitung-naik (pola sama seperti CountVal, tapi hasilnya diformat rp()).
+function RpCount({ v }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let raf; const t0 = performance.now(); const dur = 700;
+    const step = (t) => { const p = Math.min(1, (t - t0) / dur); setN(Math.round(v * (1 - Math.pow(1 - p, 3)))); if (p < 1) raf = requestAnimationFrame(step); };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [v]);
+  return <>{rp(n)}</>;
+}
+
 // Banner sapaan dengan aurora cahaya yang mengalir; cahayanya condong ke arah kursor/sentuhan.
 // Hero sapaan dengan latar dinamis mengikuti waktu WIB (gaya widget cuaca iOS) — Tugas 6.
 // Sun/moon hero icon, colored + pulsing by time-of-day phase (pagi/siang/sore/malam).
@@ -1249,12 +1310,47 @@ function UangTab({ state, me, update, onInspeksi, focusUnit, onFocusConsumed }) 
           </Card>
         );
       })}</div>
+      {isMgr && <ProfitEstimate state={state} />}
       <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} me={me} />
       <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
       <input ref={photoFileRef} type="file" accept="image/*" className="hidden" onChange={onCardPhoto} />
       <Lightbox src={zoomU} onClose={() => setZoomU("")} />
     </div>
+  );
+}
+
+// Estimasi keuntungan dari stok siap jual — cuma owner/admin (dipanggil di balik `isMgr`).
+function ProfitEstimate({ state }) {
+  const [tick, setTick] = useState(0); // tombol segarkan: baca ulang state & mainkan lagi animasi angkanya
+  const e = estimateProfit(state);
+  return (
+    <Card className="p-4" key={tick}>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <p className="font-bold text-sm flex items-center gap-1.5"><TrendingUp size={15} className="text-emerald-500" />Estimasi keuntungan</p>
+        <button onClick={() => setTick((t) => t + 1)} title="Segarkan" className="p-1.5 rounded-lg s-soft s-muted active:scale-90"><Loader2 size={14} /></button>
+      </div>
+      {e.counted === 0 ? (
+        <p className="text-xs s-muted">Belum ada motor siap jual yang sudah diisi harga jualnya{e.noPrice > 0 ? ` (${e.noPrice} motor siap jual belum ada harga jual).` : "."}</p>
+      ) : (
+        <>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between gap-2"><span className="s-muted">Profit kotor · {e.counted} motor siap jual</span><span className="font-bold shrink-0">{rp(e.gross)}</span></div>
+            <div className="flex justify-between gap-2"><span className="s-muted">Komisi penjualan · {e.counted} × {rp(e.commissionPerUnit)} ({e.bonusPeople} orang)</span><span className="font-bold shrink-0 text-rose-500">-{rp(e.commission)}</span></div>
+          </div>
+          <div className="mt-3 pt-3 border-t s-border flex items-center justify-between gap-2">
+            <span className="text-xs font-bold">Perkiraan bersih</span>
+            <span className={`text-xl font-extrabold shrink-0 ${e.net >= 0 ? "text-emerald-500" : "text-rose-500"}`}><RpCount v={e.net} /></span>
+          </div>
+          {(e.noPrice > 0 || e.investorCut > 0) && (
+            <p className="text-[10px] s-muted mt-2 leading-relaxed">
+              {e.noPrice > 0 && <>{e.noPrice} motor siap jual belum diisi harga jual — belum ikut dihitung. </>}
+              {e.investorCut > 0 && <>Belum dipotong jatah investor (± {rp(e.investorCut)}).</>}
+            </p>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
 const Read = ({ label, value, accent }) => <div className="s-soft rounded-xl py-2 px-3 text-center"><p className="text-[10px] s-muted mb-0.5">{label}</p><p className="text-sm font-bold break-words leading-tight" style={accent ? { color: accent } : {}}>{value}</p></div>;
@@ -1749,7 +1845,11 @@ function ArsipTab({ state, me, update }) {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold">{rp(u.sellPrice || 0)}</p>
-                    <p className={`text-[10px] font-semibold ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? "+" : ""}{rp(profit)}</p>
+                    {canSeeProfit(me, u) ? (
+                      <p className={`text-[10px] font-semibold ${profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{profit >= 0 ? "+" : ""}{rp(profit)}</p>
+                    ) : (
+                      <p className="text-[10px] font-semibold s-muted flex items-center gap-1 justify-end" title="Profit cuma bisa dilihat owner/admin & inspektur motor ini"><Lock size={10} />—</p>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -1801,30 +1901,39 @@ function InspectionDetailModal({ inspection, state, onClose }) {
         </div>
         <Tag color={h.decision === "beli" ? "emerald" : "rose"}>{h.decision === "beli" ? "Dibeli" : "Tidak dibeli"}</Tag>
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold mb-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-semibold mb-3">
         <span className="text-emerald-500">Baik {cnt("baik")}</span><span className="text-amber-500">Perlu perhatian {cnt("perhatian")}</span><span className="text-rose-500">Bermasalah {cnt("masalah")}</span>
+        <span className="s-muted">Belum dicek {INS_TOTAL - cnt("baik") - cnt("perhatian") - cnt("masalah")}</span>
+        <button onClick={() => window.print()} className="mr-noprint ml-auto flex items-center gap-1.5 s-soft rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-emerald-600"><Download size={13} />Cetak / PDF</button>
       </div>
-      <div className="space-y-3 mb-3">
-        {INSPEKSI_SECTIONS.map((sec) => {
-          const rows = sec.items.map((it) => ({ it, key: sec.key + ":" + it, v: (h.items || {})[sec.key + ":" + it] })).filter((r) => r.v && r.v.status);
-          if (!rows.length) return null;
-          return (
-            <div key={sec.key}>
-              <p className="text-xs font-bold s-muted mb-1.5">{sec.key} · {sec.title}</p>
-              <div className="space-y-1">
-                {rows.map(({ it, key, v }) => {
-                  const st = INS_STATUS.find((s) => s.k === v.status);
-                  return (
-                    <div key={key} className="flex items-center justify-between gap-2 s-soft rounded-lg px-2.5 py-1.5">
-                      <span className="text-xs flex items-center gap-2 min-w-0">{v.photo && <img src={v.photo} onClick={() => setZoom(v.photo)} className="w-8 h-8 rounded-md object-cover shrink-0 cursor-zoom-in" alt="" />}<span className="truncate">{it}</span></span>
-                      <span className="text-[10px] font-bold shrink-0" style={{ color: st?.c }}>{st?.l}</span>
-                    </div>
-                  );
-                })}
-              </div>
+
+      {/* Checklist LENGKAP (semua {INS_TOTAL} item, termasuk yang belum dicek) — read-only.
+          1 kolom di HP, 2 kolom di layar lebar. Scroll sendiri karena isinya panjang. */}
+      <div className="mr-scroll max-h-[55vh] overflow-y-auto pr-1 -mr-1 space-y-3 mb-3">
+        {INSPEKSI_SECTIONS.map((sec) => (
+          <div key={sec.key}>
+            <p className="text-xs font-bold s-muted mb-1.5 sticky top-0 s-surface py-0.5">{sec.key} · {sec.title}</p>
+            <div className="grid gap-1 sm:grid-cols-2">
+              {sec.items.map((it) => {
+                const key = sec.key + ":" + it;
+                const v = (h.items || {})[key] || {};
+                const st = INS_STATUS.find((s) => s.k === v.status);
+                return (
+                  <div key={key} className="flex items-center justify-between gap-2 s-soft rounded-lg px-2.5 py-1.5" style={st ? { boxShadow: `inset 3px 0 0 ${st.c}` } : { opacity: 0.6 }}>
+                    <span className="text-xs flex items-center gap-2 min-w-0">
+                      {v.photo && <img src={v.photo} onClick={() => setZoom(v.photo)} className="mr-noprint w-8 h-8 rounded-md object-cover shrink-0 cursor-zoom-in" alt="" />}
+                      <span className="truncate">{it}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="text-[10px] font-bold block" style={{ color: st ? st.c : "var(--muted)" }}>{st ? st.l : "Belum dicek"}</span>
+                      {v.ts && <span className="text-[9px] s-muted">{new Date(v.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
       {h.notes && <div className="mb-3"><p className="text-xs font-bold s-muted mb-1">Catatan</p><p className="text-sm s-soft rounded-xl p-3 break-words">{h.notes}</p></div>}
       {h.notePhotos && h.notePhotos.length > 0 && (
@@ -2324,29 +2433,101 @@ function InspectionMonitoringPanel({ open, onClose, list }) {
         </div>
         <div className="p-3 space-y-3">
           {list.length === 0 && <p className="text-center text-sm s-muted py-8">Tidak ada inspeksi yang sedang berjalan.</p>}
-          {list.map((it) => (
-            <Card key={it.id} className="p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-bold text-sm truncate">{it.name || "Motor (belum dinamai)"}</p>
-                  <p className="text-[11px] s-muted">{it.byName || "?"} · mulai {jam(it.startedAt)}</p>
-                </div>
-                <Tag color="emerald">{it.progress || 0}%</Tag>
-              </div>
-              <div className="progress-bar mt-2.5"><div className="progress-fill" style={{ width: `${Math.min(100, it.progress || 0)}%` }} /></div>
-              <p className="text-[10px] s-muted mt-1">{it.checked || 0} dari {it.total || 0} item dicek</p>
-              {it.notes && <p className="text-xs s-soft rounded-lg p-2 mt-2 break-words">{it.notes}</p>}
-              {it.photos && it.photos.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {it.photos.map((p, i) => <img key={i} src={p} onClick={() => setZoom(p)} className="w-12 h-12 rounded-lg object-cover cursor-zoom-in" alt="" />)}
-                </div>
-              )}
-            </Card>
-          ))}
+          {list.map((it) => <MonitorCard key={it.id} it={it} jam={jam} onZoom={setZoom} />)}
         </div>
       </div>
       <Lightbox src={zoom} onClose={() => setZoom("")} />
     </div>
+  );
+}
+
+// Satu kartu inspeksi yang lagi jalan: ringkasan + checklist live yang bisa dibuka per kategori.
+function MonitorCard({ it, jam, onZoom }) {
+  const [openSec, setOpenSec] = useState(null);
+  const items = it.items || {};
+  const stOf = (k) => (items[k] && items[k].s) || null;
+  const masalah = [];
+  for (const sec of INSPEKSI_SECTIONS) {
+    for (const nama of sec.items) {
+      const k = sec.key + ":" + nama;
+      const s = stOf(k);
+      if (s === "masalah" || s === "perhatian") masalah.push({ nama, s, sec: sec.title, ts: items[k] && items[k].ts });
+    }
+  }
+  return (
+    <Card className="p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-bold text-sm truncate">{it.name || "Motor (belum dinamai)"}</p>
+          <p className="text-[11px] s-muted">{it.byName || "?"} · mulai {jam(it.startedAt)}</p>
+        </div>
+        <Tag color="emerald">{it.progress || 0}%</Tag>
+      </div>
+      <div className="progress-bar mt-2.5"><div className="progress-fill" style={{ width: `${Math.min(100, it.progress || 0)}%` }} /></div>
+      <p className="text-[10px] s-muted mt-1">{it.checked || 0} dari {it.total || 0} item dicek</p>
+
+      {/* Yang penting duluan: apa saja yang sudah ketahuan bermasalah */}
+      {masalah.length > 0 && (
+        <div className="mt-2.5 rounded-xl p-2.5" style={{ background: "#ef444414" }}>
+          <p className="text-[11px] font-bold text-rose-500 mb-1.5">{masalah.length} item perlu perhatian</p>
+          <div className="space-y-1">
+            {masalah.slice(0, 6).map((m, i) => (
+              <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="truncate">{m.nama} <span className="s-muted">· {m.sec}</span></span>
+                <span className="font-bold shrink-0" style={{ color: m.s === "masalah" ? "#ef4444" : "#eab308" }}>{m.s === "masalah" ? "Bermasalah" : "Perhatian"}</span>
+              </div>
+            ))}
+            {masalah.length > 6 && <p className="text-[10px] s-muted">+{masalah.length - 6} lagi — buka kategori di bawah.</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Checklist lengkap, dibuka per kategori */}
+      <div className="mt-2.5 space-y-1.5">
+        {INSPEKSI_SECTIONS.map((sec) => {
+          const op = openSec === sec.key;
+          const dicek = sec.items.filter((n) => stOf(sec.key + ":" + n)).length;
+          return (
+            <div key={sec.key} className="s-soft rounded-xl overflow-hidden">
+              <button onClick={() => setOpenSec(op ? null : sec.key)} className="w-full flex items-center justify-between px-2.5 py-2">
+                <span className="text-[11px] font-bold">{sec.key} · {sec.title}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${dicek === sec.items.length ? "tg-emerald" : "s-muted"}`}>{dicek}/{sec.items.length}</span>
+                  <ChevronDown size={13} className={`s-muted transition ${op ? "rotate-180" : ""}`} />
+                </span>
+              </button>
+              {op && (
+                <div className="px-2.5 pb-2.5 space-y-1">
+                  {sec.items.map((nama) => {
+                    const k = sec.key + ":" + nama; const s = stOf(k); const st = INS_STATUS.find((x) => x.k === s);
+                    const ts = items[k] && items[k].ts;
+                    return (
+                      <div key={k} className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="truncate flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: st ? st.c : "var(--muted)", opacity: st ? 1 : 0.35 }} />
+                          {nama}
+                        </span>
+                        <span className="shrink-0 flex items-center gap-1.5">
+                          {ts && <span className="s-muted text-[10px]">{jam(ts)}</span>}
+                          <span className="font-bold" style={{ color: st ? st.c : "var(--muted)" }}>{st ? st.l : "belum"}</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {it.notes && <p className="text-xs s-soft rounded-lg p-2 mt-2 break-words">{it.notes}</p>}
+      {it.photos && it.photos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {it.photos.map((p, i) => <img key={i} src={p} onClick={() => onZoom(p)} className="w-12 h-12 rounded-lg object-cover cursor-zoom-in" alt="" />)}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -2373,7 +2554,12 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
   const photoRef = useRef(null); const photoForRef = useRef(null);
   const notePhotoRef = useRef(null);
   const reset = () => { setName(""); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); };
-  const setStatus = (key, st) => setItems((p) => ({ ...p, [key]: { ...(p[key] || {}), status: p[key] && p[key].status === st ? undefined : st } }));
+  // ts = kapan item ini terakhir di-set — dipakai monitoring live & tampilan detail arsip.
+  const setStatus = (key, st) => setItems((p) => {
+    const cur = p[key] || {};
+    const off = cur.status === st; // klik status yang sama = batalkan
+    return { ...p, [key]: { ...cur, status: off ? undefined : st, ts: off ? undefined : Date.now() } };
+  });
   const pickPhoto = (key) => { photoForRef.current = key; if (photoRef.current) photoRef.current.click(); };
   const onPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const key = photoForRef.current; photoForRef.current = null; if (!f || !key) return; const data = await compress(f, 900, 0.5); if (data) setItems((p) => ({ ...p, [key]: { ...(p[key] || {}), photo: data } })); };
   const addNotePhoto = () => notePhotoRef.current && notePhotoRef.current.click();
@@ -2396,6 +2582,14 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => {
+      // Checklist dikirim RAMPING: cuma status + waktunya, foto per-item sengaja dibuang.
+      // Foto item itu base64 ratusan KB; kalau ikut dikirim tiap beberapa detik, key bersama ini
+      // bakal membengkak parah. Foto catatan (notePhotos) tetap ikut, tapi dibatasi di hook.
+      const lean = {};
+      for (const k of Object.keys(items)) {
+        const v = items[k];
+        if (v && v.status) lean[k] = { s: v.status, ts: v.ts || null, foto: !!v.photo };
+      }
       publishDraft({
         id: me.id,
         byName: me.name,
@@ -2403,13 +2597,14 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
         checked: totalChecked,
         total: INS_TOTAL,
         progress: Math.round((totalChecked / INS_TOTAL) * 100),
+        items: lean,
         notes: notes.trim(),
         photos: notePhotos,
         startedAt: startedAtRef.current || Date.now(),
       });
     }, 1500);
     return () => clearTimeout(t);
-  }, [open, name, notes, notePhotos, totalChecked, beat, me.id, me.name]);
+  }, [open, name, notes, notePhotos, items, totalChecked, beat, me.id, me.name]);
 
   const decide = (buy) => {
     if (saving) return; setSaving(true);
