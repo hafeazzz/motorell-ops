@@ -14,18 +14,45 @@ const STATE_KEY = "motorell-state-v3";
 const ALARMS = {
   break_start: { title: "Waktunya istirahat", body: "Istirahat sampai 13:30. Selamat makan!" },
   break_end: { title: "Istirahat selesai", body: "Yuk balik kerja lagi 💪" },
+  // Sama persis pesan & jam dgn src/hooks/useAttendanceReminder.js (versi in-app) — ini cuma
+  // jaring pengaman-nya lewat push, biar tetap nyampe walau app-nya tertutup total.
+  absen_masuk: { title: "Jangan lupa absen!", body: "Absen masuk sebelum jam 09.00 ya.", audience: "staff", suppressIf: "clockIn" },
+  absen_pulang: { title: "Waktunya pulang", body: "Jangan lupa absen keluar sebelum pulang ya.", audience: "staff", suppressIf: "clockOut" },
 };
 
-// Push di-target per user id, jadi ambil semua id dari state tim.
-async function allUserIds() {
+function wibDateStr() {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const g = (t) => parts.find((p) => p.type === t).value;
+  return `${g("year")}-${g("month")}-${g("day")}`;
+}
+
+async function loadState() {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/kv?key=eq.${STATE_KEY}&select=value`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   });
   if (!r.ok) throw new Error(`gagal baca state (${r.status})`);
   const rows = await r.json();
   const raw = rows && rows[0] && rows[0].value;
-  const state = raw ? JSON.parse(raw) : null;
-  return ((state && state.users) || []).map((u) => u.id).filter(Boolean);
+  return raw ? JSON.parse(raw) : null;
+}
+
+// Sasaran push tergantung jenis alarm: istirahat = semua orang; absen = staff/admin saja
+// (owner tidak absen), dan orang yang HARI INI sudah absen masuk/keluar tidak usah diganggu lagi —
+// sama seperti kenapa versi in-app-nya juga diam kalau sudah absen.
+function targetUserIds(state, alarm) {
+  let users = (state && state.users) || [];
+  if (alarm.audience === "staff") users = users.filter((u) => u.role !== "owner");
+  if (alarm.suppressIf) {
+    const dateStr = wibDateStr();
+    const attendance = (state && state.attendance) || [];
+    users = users.filter((u) => {
+      const a = attendance.find((x) => x.userId === u.id && x.date === dateStr);
+      if (alarm.suppressIf === "clockIn") return !a; // belum absen masuk -> masih perlu diingatkan
+      if (alarm.suppressIf === "clockOut") return !(a && a.clockOut); // belum absen keluar
+      return true;
+    });
+  }
+  return users.map((u) => u.id).filter(Boolean);
 }
 
 async function invokePush(name, payload) {
@@ -50,8 +77,9 @@ export default async function handler(req, res) {
   if (!alarm) return res.status(400).json({ ok: false, error: `type tidak dikenal: ${type}` });
 
   try {
-    const toUserIds = await allUserIds();
-    if (!toUserIds.length) return res.status(200).json({ ok: false, error: "tidak ada user di state" });
+    const state = await loadState();
+    const toUserIds = targetUserIds(state, alarm);
+    if (!toUserIds.length) return res.status(200).json({ ok: false, error: "tidak ada sasaran (semua sudah absen, atau state kosong)" });
 
     // ?dry=1 → cuma laporkan sasaran, tidak benar-benar mengirim. Buat ngetes tanpa membangunkan satu tim.
     if (req.query && req.query.dry) {

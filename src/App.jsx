@@ -1260,15 +1260,21 @@ function AbsenTab({ state, me, isOwner, isMgr, update }) {
           {!myToday ? (
             <div className="space-y-3"><div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto di kantor (wajib)</p><PhotoInput value={photo} onChange={setPhoto} label="Foto selfie / lokasi kantor" /></div><Btn onClick={clockIn} disabled={!photo} className="w-full"><Clock size={16} className="inline mr-1.5 -mt-0.5" />Absen masuk</Btn></div>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 tg-emerald rounded-xl px-3 py-2.5">{myToday.photo && <img src={myToday.photo} onClick={() => setZoom(myToday.photo)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><BadgeCheck size={18} /> Hadir · masuk {myToday.clockIn}</div></div>
-              {!myToday.clockOut ? (
-                <div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto sebelum pulang (wajib)</p><PhotoInput value={photoOut} onChange={setPhotoOut} label="Foto selfie / lokasi kantor" /><Btn onClick={clockOut} disabled={!photoOut} variant="dark" className="w-full mt-2"><LogOut size={16} className="inline mr-1.5 -mt-0.5" />Absen keluar</Btn></div>
-              ) : (
-                <div className="flex items-center gap-3 tg-blue rounded-xl px-3 py-2.5">{myToday.photoOut && <img src={myToday.photoOut} onClick={() => setZoom(myToday.photoOut)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><LogOut size={18} /> Pulang · keluar {myToday.clockOut}</div></div>
-              )}
-            </div>
+            <div className="flex items-center gap-3 tg-emerald rounded-xl px-3 py-2.5">{myToday.photo && <img src={myToday.photo} onClick={() => setZoom(myToday.photo)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><BadgeCheck size={18} /> Hadir · masuk {myToday.clockIn}</div></div>
           )}
+
+          {/* Absen keluar — selalu tampil di bawah absen masuk (bukan cuma muncul setelahnya),
+              terkunci dgn keterangan sampai absen masuk hari ini selesai. */}
+          <div className="border-t s-border mt-4 pt-3">
+            <p className="text-sm font-semibold mb-2 flex items-center gap-1.5"><LogOut size={15} />Absen keluar</p>
+            {!myToday ? (
+              <p className="text-xs s-muted">Absen masuk dulu sebelum bisa absen keluar.</p>
+            ) : !myToday.clockOut ? (
+              <div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto sebelum pulang (wajib)</p><PhotoInput value={photoOut} onChange={setPhotoOut} label="Foto selfie / lokasi kantor" /><Btn onClick={clockOut} disabled={!photoOut} variant="dark" className="w-full mt-2"><LogOut size={16} className="inline mr-1.5 -mt-0.5" />Absen keluar</Btn></div>
+            ) : (
+              <div className="flex items-center gap-3 tg-blue rounded-xl px-3 py-2.5">{myToday.photoOut && <img src={myToday.photoOut} onClick={() => setZoom(myToday.photoOut)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><LogOut size={18} /> Pulang · keluar {myToday.clockOut}</div></div>
+            )}
+          </div>
           <div className="border-t s-border mt-4 pt-3">
             <p className="text-sm font-semibold mb-2 flex items-center gap-1.5"><Video size={15} className="text-rose-500" /> Live TikTok tim (wajib)</p>
             {live ? <LiveProof live={live} userName={userName} setZoom={setZoom} /> : (
