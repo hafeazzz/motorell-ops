@@ -505,7 +505,12 @@ function MotorellOps() {
   }, [dark]);
 
   if (!state) return <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
-  if (!me) return <Auth state={state} onLogin={handleLogin} update={update} />;
+  if (!me) return (
+    <>
+      <Auth state={state} onLogin={handleLogin} update={update} />
+      <AlarmToast toast={toast} onClose={() => setToast(null)} />
+    </>
+  );
 
   const isOwner = me.role === "owner";
   const isAdmin = me.role === "admin";
@@ -775,12 +780,7 @@ button:active{transform:scale(.97)}
       )}
       <InspectionMonitoringPanel open={monitorOpen} onClose={() => setMonitorOpen(false)} list={activeInspections} />
 
-      {toast && (
-        <div className={`mr-toast ${toast.kind === "break_start" ? "toast-start" : "toast-end"}`} onClick={() => setToast(null)}>
-          <p className="font-bold text-sm">{toast.title}</p>
-          <p className="text-xs opacity-90 mt-0.5">{toast.body}</p>
-        </div>
-      )}
+      <AlarmToast toast={toast} onClose={() => setToast(null)} />
 
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} chatTick={chatTick} />
       <HandbookErrorBoundary onClose={() => setHandbookOpen(false)}>
@@ -1062,6 +1062,18 @@ function getSunMoonElement(phase) {
   return (
     <div className={`hero-sunmoon ${anim}`} style={{ color }}>
       <Icon size={size} strokeWidth={1.75} fill={color} />
+    </div>
+  );
+}
+// Toast alarm istirahat — dipakai baik di layar login maupun app utama, supaya alarm yang
+// kebetulan bunyi pas tab lagi nongkrong di layar login (belum ada yang pilih user) tetap
+// kelihatan, bukan cuma bunyi+getar tanpa ada yang bisa dibaca.
+function AlarmToast({ toast, onClose }) {
+  if (!toast) return null;
+  return (
+    <div className={`mr-toast ${toast.kind === "break_start" ? "toast-start" : "toast-end"}`} onClick={onClose}>
+      <p className="font-bold text-sm">{toast.title}</p>
+      <p className="text-xs opacity-90 mt-0.5">{toast.body}</p>
     </div>
   );
 }
