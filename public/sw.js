@@ -73,6 +73,59 @@ self.addEventListener("push", (event) => {
   })());
 });
 
+/* ===== Ganti-subscription otomatis =====
+   Browser sesekali MEROTASI push subscription sendiri di belakang layar (bikin endpoint baru,
+   yang lama jadi mati) — ini penyebab utama sebagian device (macOS Safari terutama) berhenti
+   dapat notif seiring waktu, karena app cuma pernah menyimpan endpoint sekali waktu login.
+   Di sini SW menyimpan sendiri siapa pemilik device ini (dikirim App.jsx lewat postMessage,
+   disimpan ke Cache Storage biar tetap ada walau SW-nya di-restart browser), supaya saat
+   `pushsubscriptionchange` terjadi, SW bisa langsung re-subscribe & simpan ulang ke Supabase
+   TANPA perlu tab app-nya kebuka. */
+const SUPABASE_URL = "https://txmrcgvcfgfulwelideb.supabase.co";
+const SUPABASE_KEY = "sb_publishable_csR5fqVv0BDZEr8R1ZXQfg_4WBG5QYH";
+const VAPID_PUBLIC = "BDdyxYQ6Y8hVX0ZdrMZk4P6fgqH0n6FfT501RNJjvJxdMPRoZqNjkkO1ZHkHn2aFpwICxAunybpNZ8-gI5e0m0c";
+const META_CACHE = "motorell-meta";
+const META_REQ = "https://motorell.local/__push-user"; // kunci palsu, Cache API butuh Request-like
+
+function urlB64ToUint8(base64) {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64); const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+async function getSavedUserId() {
+  try { const c = await caches.open(META_CACHE); const r = await c.match(META_REQ); return r ? (await r.json()).userId || null : null; } catch (e) { return null; }
+}
+async function saveUserId(userId) {
+  try { const c = await caches.open(META_CACHE); await c.put(META_REQ, new Response(JSON.stringify({ userId }))); } catch (e) {}
+}
+
+self.addEventListener("message", (event) => {
+  const d = event.data;
+  if (d && d.type === "MR_SET_USER" && d.userId) event.waitUntil(saveUserId(d.userId));
+});
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil((async () => {
+    try {
+      const userId = await getSavedUserId();
+      if (!userId) return; // tidak tahu device ini punya siapa — tidak ada yang bisa disimpan
+      const oldEndpoint = event.oldSubscription && event.oldSubscription.endpoint;
+      const newSub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC) });
+      const body = newSub.toJSON();
+      await fetch(`${SUPABASE_URL}/rest/v1/push_subs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ endpoint: body.endpoint, user_id: userId, sub: body, updated: Date.now() }),
+      });
+      if (oldEndpoint && oldEndpoint !== body.endpoint) {
+        await fetch(`${SUPABASE_URL}/rest/v1/push_subs?endpoint=eq.${encodeURIComponent(oldEndpoint)}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+      }
+    } catch (e) { console.error("pushsubscriptionchange error:", e); }
+  })());
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "/";

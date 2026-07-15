@@ -10,7 +10,11 @@ const ALARMS = [
   { key: "break_start", h: 12, m: 0, title: "Waktunya istirahat", body: "Istirahat sampai 13:30. Selamat makan!" },
   { key: "break_end", h: 13, m: 30, title: "Istirahat selesai", body: "Yuk balik kerja lagi 💪" },
 ];
-const WINDOW_MIN = 2; // toleransi: tab baru dibuka telat / timer meleset sedikit
+// Toleransi "kejar ketinggalan": browser men-throttle setInterval di tab yang lagi di-background
+// (minimize, pindah tab lain) — kadang sampai berhenti sama sekali selama beberapa menit — jadi
+// jendela deteksinya sengaja dilebarkan, bukan cuma beberapa detik pas-pasan, supaya tab yang
+// baru "sadar" lagi (visibilitychange ke visible) masih menganggap alarm hari itu berlaku.
+const CATCHUP_MIN = 45;
 
 // Jam WIB (Asia/Jakarta) — dihitung sendiri di sini biar hook ini tidak perlu impor dari
 // App.jsx (App.jsx yang impor hook ini; impor balik = circular import).
@@ -73,7 +77,7 @@ export default function useBreakReminder(onAlarm) {
       const { date, mins } = wibNow();
       for (const a of ALARMS) {
         const target = a.h * 60 + a.m;
-        if (mins < target || mins > target + WINDOW_MIN) continue;
+        if (mins < target || mins > target + CATCHUP_MIN) continue;
         const fired = `motorell-alarm-${a.key}-${date}`; // sekali sehari per alarm, per perangkat
         try {
           if (localStorage.getItem(fired)) continue;

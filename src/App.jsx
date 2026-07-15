@@ -125,9 +125,23 @@ async function enablePush(userId) {
     const reg = await registerSW(); // URL ber-versi — jangan register("/sw.js") langsung, nanti registrasi dobel
     if (!reg) return;
     await navigator.serviceWorker.ready;
+    // Beri tahu SW device ini punya siapa — dipakai kalau browser merotasi subscription
+    // sendiri di background (pushsubscriptionchange), supaya SW bisa simpan ulang endpoint
+    // baru walau tab app-nya sedang tertutup. Aman dipanggil berkali-kali (idempotent).
+    try { if (reg.active) reg.active.postMessage({ type: "MR_SET_USER", userId }); } catch (e) {}
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC) });
-    if (sub && window.storage && window.storage.savePushSub) await window.storage.savePushSub(userId, sub.toJSON());
+    if (!sub) return;
+    // Device ini mungkin pernah subscribe dgn endpoint LAIN sebelumnya (kalau browser
+    // rotasi sendiri di kesempatan sebelum pushsubscriptionchange dipasang) — hapus yang
+    // lama biar tidak menumpuk baris mati di push_subs.
+    try {
+      const prevKey = "motorell-push-endpoint";
+      const prev = localStorage.getItem(prevKey);
+      if (prev && prev !== sub.endpoint && window.storage && window.storage.deletePushSub) await window.storage.deletePushSub(prev);
+      localStorage.setItem(prevKey, sub.endpoint);
+    } catch (e) {}
+    if (window.storage && window.storage.savePushSub) await window.storage.savePushSub(userId, sub.toJSON());
   } catch (e) { console.error("enablePush error:", e); }
 }
 function pushTo(userIds, title, body) {
@@ -488,7 +502,16 @@ function MotorellOps() {
 
   useEffect(() => {
     // registrasi SW-nya diurus useServiceWorker() (pakai URL ber-versi)
-    if (me && notifOK() && Notification.permission === "granted") enablePush(me.id);
+    if (!me || !notifOK() || Notification.permission !== "granted") return;
+    enablePush(me.id);
+    // Cek ulang tiap tab kembali aktif + tiap beberapa jam — jaring pengaman kalau
+    // `pushsubscriptionchange` di sw.js tidak sempat kepasang/kepanggil (browser lama,
+    // atau device baru pertama kali subscribe SEBELUM fitur ini ada).
+    const recheck = () => enablePush(me.id);
+    const onVis = () => { if (document.visibilityState === "visible") recheck(); };
+    document.addEventListener("visibilitychange", onVis);
+    const iv = setInterval(recheck, 4 * 60 * 60 * 1000);
+    return () => { document.removeEventListener("visibilitychange", onVis); clearInterval(iv); };
   }, [me && me.id]);
   useEffect(() => { loadState().then((s) => { const { next, changed } = prunePhotos(s); const c2 = stripAutoExtras(next); const c3 = fixSaleBonus(next); if (changed || c2 || c3) saveState(next); setState(next); }); (async () => { try { const r = await window.storage.get(THEME_KEY); setDark(r && r.value ? r.value === "1" : true); } catch (e) {} try { const sr = await window.storage.get("motorell-sound"); if (sr && sr.value) SOUND_ON = sr.value !== "0"; } catch (e) {} })(); }, []);
   useEffect(() => {
