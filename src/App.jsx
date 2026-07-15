@@ -25,11 +25,20 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQQAAABBCAYAAAA36tph
 /* ============ Helpers ============ */
 const uid = () => Math.random().toString(36).slice(2, 9);
 const pad2 = (n) => String(n).padStart(2, "0");
-const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+// "Hari ini"/"jam sekarang" DIPAKSA WIB (Asia/Jakarta), bukan zona waktu device — dealership-nya
+// di WIB, jadi kalau jam/zona waktu HP staff salah setting, absen/laporan/tanggal transaksi tidak
+// ikut meleset. Dulu pakai jam lokal device apa adanya (new Date().getFullYear() dst).
+const today = () => {
+  try {
+    const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const g = (t) => p.find((x) => x.type === t).value;
+    return `${g("year")}-${g("month")}-${g("day")}`;
+  } catch (e) { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+};
 const month = () => today().slice(0, 7);
 const inMonth = (d, ym) => d && d.slice(0, 7) === ym;
 const rp = (n) => "Rp " + (Number(n) || 0).toLocaleString("id-ID");
-const now = () => new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+const now = () => { try { return new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }); } catch (e) { return new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }); } };
 const monthLabel = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" }); };
 const shiftMonth = (ym, d) => { const [y, m] = ym.split("-").map(Number); const i = y * 12 + (m - 1) + d; return `${Math.floor(i / 12)}-${pad2((i % 12) + 1)}`; };
 function wibParts() {
@@ -1256,7 +1265,7 @@ function AbsenTab({ state, me, isOwner, isMgr, update }) {
       {!isOwner && (
         <Card className="p-4">
           <p className="font-bold mb-1">Absensi hari ini</p>
-          <p className="text-xs s-muted mb-3">{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}</p>
+          <p className="text-xs s-muted mb-3">{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Jakarta" })}</p>
           {!myToday ? (
             <div className="space-y-3"><div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto di kantor (wajib)</p><PhotoInput value={photo} onChange={setPhoto} label="Foto selfie / lokasi kantor" /></div><Btn onClick={clockIn} disabled={!photo} className="w-full"><Clock size={16} className="inline mr-1.5 -mt-0.5" />Absen masuk</Btn></div>
           ) : (
@@ -1871,23 +1880,26 @@ function LaporanTab({ state }) {
   );
 }
 
-/* ============ Arsip Motor (motor terjual & riwayat inspeksi) ============ */
+/* ============ Arsip (motor terjual, riwayat inspeksi, absen harian) ============ */
 function ArsipTab({ state, me, update }) {
+  const isMgr = me.role === "owner" || me.role === "admin";
   const [sub, setSub] = useState("terjual");
   const [detail, setDetail] = useState(null);
   const [expModal, setExpModal] = useState(null);
   const [openInspection, setOpenInspection] = useState(null);
   const [soldShow, setSoldShow] = useState(20);
   const [inspShow, setInspShow] = useState(20);
+  const [ymAbsen, setYmAbsen] = useState(month());
   const sold = [...state.units].filter((u) => u.status === "terjual").sort((a, b) => (b.soldAt || "").localeCompare(a.soldAt || ""));
   const inspected = state.inspections || [];
   const dateLabel = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-";
   return (
     <div className="space-y-3 pt-1">
-      <p className="font-bold text-lg pt-1">Arsip Motor</p>
-      <div className="grid grid-cols-2 gap-1 s-soft rounded-xl p-1">
+      <p className="font-bold text-lg pt-1">Arsip</p>
+      <div className={`grid ${isMgr ? "grid-cols-3" : "grid-cols-2"} gap-1 s-soft rounded-xl p-1`}>
         <button onClick={() => setSub("terjual")} className={`py-2 rounded-lg text-xs font-bold transition ${sub === "terjual" ? "ac-bg text-white" : "s-muted"}`}>Motor Terjual ({sold.length})</button>
         <button onClick={() => setSub("diinspeksi")} className={`py-2 rounded-lg text-xs font-bold transition ${sub === "diinspeksi" ? "ac-bg text-white" : "s-muted"}`}>Motor Diinspeksi ({inspected.length})</button>
+        {isMgr && <button onClick={() => setSub("absen")} className={`py-2 rounded-lg text-xs font-bold transition ${sub === "absen" ? "ac-bg text-white" : "s-muted"}`}>Absen</button>}
       </div>
       {sub === "terjual" && (
         <div className="space-y-2">
@@ -1938,9 +1950,51 @@ function ArsipTab({ state, me, update }) {
           {inspected.length > inspShow && <Btn variant="ghost" onClick={() => setInspShow((n) => n + 20)} className="w-full">Tampilkan lebih ({inspected.length - inspShow} lagi)</Btn>}
         </div>
       )}
+      {isMgr && sub === "absen" && <ArsipAbsenView state={state} ym={ymAbsen} setYm={setYmAbsen} />}
       <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
       <InspectionDetailModal inspection={openInspection} state={state} me={me} update={update} onClose={() => setOpenInspection(null)} />
+    </div>
+  );
+}
+// Arsip Absen — riwayat kehadiran per hari dalam sebulan. Owner/admin saja (digerbangi dari
+// pemanggil di ArsipTab); dipisah komponen sendiri karena butuh state bulan sendiri.
+function ArsipAbsenView({ state, ym, setYm }) {
+  const isCurrent = ym === month();
+  const byDate = {};
+  state.attendance.filter((a) => inMonth(a.date, ym)).forEach((a) => { (byDate[a.date] = byDate[a.date] || []).push(a); });
+  const dates = Object.keys(byDate).sort().reverse();
+  const staff = state.users.filter((u) => u.role !== "owner");
+  const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
+  const fullDateLabel = (d) => new Date(d + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-1 s-soft rounded-xl p-1 justify-center">
+        <button onClick={() => setYm(shiftMonth(ym, -1))} className="p-1.5 rounded-lg s-surface"><ChevronLeft size={16} /></button>
+        <span className="text-xs font-bold px-1 min-w-[110px] text-center">{monthLabel(ym)}</span>
+        <button disabled={isCurrent} onClick={() => setYm(shiftMonth(ym, 1))} className={`p-1.5 rounded-lg s-surface ${isCurrent ? "opacity-30" : ""}`}><ChevronRight size={16} /></button>
+      </div>
+      <p className="text-[11px] s-muted px-1">{dates.length} hari ada absen dari {staff.length} staff/admin bulan ini.</p>
+      {dates.length === 0 && <p className="text-center text-sm s-muted py-8">Belum ada data absensi bulan ini.</p>}
+      {dates.map((d) => {
+        const rows = byDate[d].slice().sort((a, b) => (a.clockIn || "").localeCompare(b.clockIn || ""));
+        return (
+          <Card key={d} className="p-3">
+            <p className="text-xs font-bold s-muted mb-2 capitalize">{fullDateLabel(d)}</p>
+            <div className="space-y-1.5">
+              {rows.map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="font-medium truncate">{userName(a.userId)}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Tag color="emerald">Masuk {a.clockIn}</Tag>
+                    {a.clockOut ? <Tag color="blue">Keluar {a.clockOut}</Tag> : <Tag color="slate">Belum keluar</Tag>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }
