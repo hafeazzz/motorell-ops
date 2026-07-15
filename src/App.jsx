@@ -15,6 +15,7 @@ import useInspectionMonitoring, { publishDraft, clearDraft } from "./hooks/useIn
 import useServiceWorker from "./hooks/useServiceWorker";
 import useVersionCheck from "./hooks/useVersionCheck";
 import useBreakReminder from "./hooks/useBreakReminder";
+import useAttendanceReminder from "./hooks/useAttendanceReminder";
 import { registerSW } from "./utils/sw";
 import { comprehensiveLogout } from "./utils/logout";
 import "./styles/heroAnimations.css";
@@ -462,6 +463,14 @@ function MotorellOps() {
   useServiceWorker();  // daftar SW + auto-reload saat deploy baru aktif
   useVersionCheck();   // bandingkan build id dgn /version.json tiap 5 menit
   useBreakReminder(setToast); // alarm 12:00 & 13:30 WIB
+  // Owner tidak absen, jadi pengingat ini cuma untuk staff/admin — dan tidak perlu diingatkan
+  // lagi kalau hari ini sudah absen masuk / sudah absen keluar.
+  const myAttToday = state && me ? state.attendance.find((a) => a.userId === me.id && a.date === today()) : null;
+  useAttendanceReminder(
+    !!me && me.role !== "owner",
+    { absen_masuk: !!myAttToday, absen_pulang: !!(myAttToday && myAttToday.clockOut) },
+    setToast
+  );
   const { activeInspections } = useInspectionMonitoring();
 
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 5000); return () => clearTimeout(t); }, [toast]);
@@ -724,6 +733,8 @@ button:active{transform:scale(.97)}
 .mr-toast{position:fixed;left:50%;bottom:calc(6.5rem + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:70;min-width:230px;max-width:min(88vw,340px);padding:12px 16px;border-radius:16px;color:#fff;text-align:center;cursor:pointer;box-shadow:0 18px 40px -12px rgba(0,0,0,.6);animation:toastIn .35s cubic-bezier(.34,1.56,.64,1)}
 .mr-toast.toast-start{background:linear-gradient(135deg,#10b981,#059669)}
 .mr-toast.toast-end{background:linear-gradient(135deg,#f97316,#ea580c)}
+.mr-toast.toast-in{background:linear-gradient(135deg,#3b82f6,#2563eb)}
+.mr-toast.toast-out{background:linear-gradient(135deg,#8b5cf6,#7c3aed)}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,24px) scale(.92)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @media (prefers-reduced-motion:reduce){.live-dot,.monitoring-panel,.mr-toast{animation:none}}
 
@@ -1091,10 +1102,11 @@ function getSunMoonElement(phase) {
 // Toast alarm istirahat — dipakai baik di layar login maupun app utama, supaya alarm yang
 // kebetulan bunyi pas tab lagi nongkrong di layar login (belum ada yang pilih user) tetap
 // kelihatan, bukan cuma bunyi+getar tanpa ada yang bisa dibaca.
+const TOAST_CLASS = { break_start: "toast-start", break_end: "toast-end", absen_masuk: "toast-in", absen_pulang: "toast-out" };
 function AlarmToast({ toast, onClose }) {
   if (!toast) return null;
   return (
-    <div className={`mr-toast ${toast.kind === "break_start" ? "toast-start" : "toast-end"}`} onClick={onClose}>
+    <div className={`mr-toast ${TOAST_CLASS[toast.kind] || "toast-start"}`} onClick={onClose}>
       <p className="font-bold text-sm">{toast.title}</p>
       <p className="text-xs opacity-90 mt-0.5">{toast.body}</p>
     </div>
@@ -1232,9 +1244,10 @@ const Quick = ({ label, icon: Ic, onClick }) => (
 function AbsenTab({ state, me, isOwner, isMgr, update }) {
   const myToday = state.attendance.find((a) => a.userId === me.id && a.date === today());
   const live = state.lives.find((l) => l.date === today());
-  const [photo, setPhoto] = useState(""); const [liveLink, setLiveLink] = useState(""); const [livePhoto, setLivePhoto] = useState(""); const [zoom, setZoom] = useState("");
+  const [photo, setPhoto] = useState(""); const [photoOut, setPhotoOut] = useState(""); const [liveLink, setLiveLink] = useState(""); const [livePhoto, setLivePhoto] = useState(""); const [zoom, setZoom] = useState("");
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
   const clockIn = () => { if (!photo) return; update((s) => { s.attendance.push({ id: uid(), userId: me.id, date: today(), clockIn: now(), photo }); return s; }); setPhoto(""); window.dispatchEvent(new CustomEvent("mr-greet", { detail: { msg: "Absen masuk tercatat. Semangat ya! 👋" } })); };
+  const clockOut = () => { if (!photoOut) return; update((s) => { const a = s.attendance.find((x) => x.userId === me.id && x.date === today()); if (a) { a.clockOut = now(); a.photoOut = photoOut; } return s; }); setPhotoOut(""); window.dispatchEvent(new CustomEvent("mr-greet", { detail: { msg: "Absen keluar tercatat. Hati-hati di jalan! 👋" } })); };
   const markLive = () => { if (!liveLink && !livePhoto) return; update((s) => { s.lives.push({ id: uid(), date: today(), by: me.id, link: liveLink, photo: livePhoto }); return s; }); setLiveLink(""); setLivePhoto(""); };
   const staff = state.users.filter((u) => u.role !== "owner");
 
@@ -1247,7 +1260,14 @@ function AbsenTab({ state, me, isOwner, isMgr, update }) {
           {!myToday ? (
             <div className="space-y-3"><div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto di kantor (wajib)</p><PhotoInput value={photo} onChange={setPhoto} label="Foto selfie / lokasi kantor" /></div><Btn onClick={clockIn} disabled={!photo} className="w-full"><Clock size={16} className="inline mr-1.5 -mt-0.5" />Absen masuk</Btn></div>
           ) : (
-            <div className="flex items-center gap-3 tg-emerald rounded-xl px-3 py-2.5">{myToday.photo && <img src={myToday.photo} onClick={() => setZoom(myToday.photo)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><BadgeCheck size={18} /> Hadir · masuk {myToday.clockIn}</div></div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 tg-emerald rounded-xl px-3 py-2.5">{myToday.photo && <img src={myToday.photo} onClick={() => setZoom(myToday.photo)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><BadgeCheck size={18} /> Hadir · masuk {myToday.clockIn}</div></div>
+              {!myToday.clockOut ? (
+                <div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto sebelum pulang (wajib)</p><PhotoInput value={photoOut} onChange={setPhotoOut} label="Foto selfie / lokasi kantor" /><Btn onClick={clockOut} disabled={!photoOut} variant="dark" className="w-full mt-2"><LogOut size={16} className="inline mr-1.5 -mt-0.5" />Absen keluar</Btn></div>
+              ) : (
+                <div className="flex items-center gap-3 tg-blue rounded-xl px-3 py-2.5">{myToday.photoOut && <img src={myToday.photoOut} onClick={() => setZoom(myToday.photoOut)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><LogOut size={18} /> Pulang · keluar {myToday.clockOut}</div></div>
+              )}
+            </div>
           )}
           <div className="border-t s-border mt-4 pt-3">
             <p className="text-sm font-semibold mb-2 flex items-center gap-1.5"><Video size={15} className="text-rose-500" /> Live TikTok tim (wajib)</p>
@@ -1269,7 +1289,7 @@ function AbsenTab({ state, me, isOwner, isMgr, update }) {
                 return (
                   <div key={u.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">{a?.photo ? <img src={a.photo} onClick={() => setZoom(a.photo)} className="w-9 h-9 rounded-lg object-cover" alt="" /> : <Avatar user={u} size={36} />}<span className="text-sm font-medium">{u.name} <span className="s-muted text-xs">· {u.position}</span></span></div>
-                    <div className="flex items-center gap-1.5">{a ? <Tag color="emerald">Hadir {a.clockIn}</Tag> : <Tag color="slate">Belum</Tag>}{live ? <Tag color="rose">Live ✓</Tag> : <Tag color="amber">No live</Tag>}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">{a ? <Tag color="emerald">Hadir {a.clockIn}</Tag> : <Tag color="slate">Belum</Tag>}{a?.clockOut && <Tag color="blue">Pulang {a.clockOut}</Tag>}{live ? <Tag color="rose">Live ✓</Tag> : <Tag color="amber">No live</Tag>}</div>
                   </div>
                 );
               })}
