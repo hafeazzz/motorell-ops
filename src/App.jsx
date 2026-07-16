@@ -1810,7 +1810,7 @@ function monthlyReport(state, ym) {
   // Pakai unitProfit biar aturannya sama persis dgn rincian di Detail unit & estimateProfit.
   const netProfit = sold.reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : (u.sellPrice || 0) - u.buyPrice - expFor(u.id)); }, 0);
   const byName = {};
-  sold.forEach((u) => { byName[u.name] = byName[u.name] || { count: 0, profit: 0, revenue: 0 }; byName[u.name].count++; byName[u.name].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].revenue += (u.sellPrice || 0); });
+  sold.forEach((u) => { byName[u.name] = byName[u.name] || { count: 0, profit: 0, net: 0, revenue: 0 }; const p = unitProfit(state, u); byName[u.name].count++; byName[u.name].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].net += p ? p.net : (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].revenue += (u.sellPrice || 0); });
   const groups = Object.entries(byName).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
   const liveDays = new Set(state.lives.filter((l) => inMonth(l.date, ym)).map((l) => l.date));
   const activeDays = new Set(state.attendance.filter((a) => inMonth(a.date, ym)).map((a) => a.date));
@@ -1844,10 +1844,10 @@ function LaporanTab({ state }) {
     try { X = await ensureXLSX(); } catch (e) { alert("Gagal memuat library Excel. Cek koneksi internet lalu coba lagi."); return; }
     const expFor = (id) => state.expenses.filter((e) => e.unitId === id).reduce((a, e) => a + e.amount, 0);
     const wb = X.utils.book_new();
-    const sum = [["Laporan Motorell", monthLabel(ym)], [], ["Unit terjual", r.total], ["Total omzet (Rp)", r.revenue], ["Total profit (Rp)", r.profit], [], ["Hari tim live", r.teamLive], ["Hari bolos live (tim)", r.teamBolos]];
+    const sum = [["Laporan Motorell", monthLabel(ym)], [], ["Unit terjual", r.total], ["Total omzet (Rp)", r.revenue], ["Total profit kotor (Rp)", r.profit], ["Total profit bersih (Rp)", r.netProfit], [], ["Hari tim live", r.teamLive], ["Hari bolos live (tim)", r.teamBolos]];
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), "Ringkasan");
-    const unitRows = [["Nama", "Plat", "Odometer (km)", "Modal beli", "Pengeluaran", "Harga jual", "Profit", "Tgl masuk", "Tgl keluar"]];
-    r.sold.forEach((u) => { const e = expFor(u.id); unitRows.push([u.name, u.plate || "", u.odometer || 0, u.buyPrice, e, u.sellPrice || 0, (u.sellPrice || 0) - u.buyPrice - e, u.inDate || "", u.soldAt || ""]); });
+    const unitRows = [["Nama", "Plat", "Odometer (km)", "Modal beli", "Pengeluaran", "Harga jual", "Profit kotor", "Komisi", "Jatah investor", "Profit bersih", "Tgl masuk", "Tgl keluar"]];
+    r.sold.forEach((u) => { const e = expFor(u.id); const p = unitProfit(state, u); const gross = (u.sellPrice || 0) - u.buyPrice - e; unitRows.push([u.name, u.plate || "", u.odometer || 0, u.buyPrice, e, u.sellPrice || 0, gross, p ? p.commission : 0, p ? p.investorCut : 0, p ? p.net : gross, u.inDate || "", u.soldAt || ""]); });
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(unitRows), "Unit Terjual");
     const empRows = [["Nama", "Posisi", "Hari hadir", "Extra cash (Rp)"]];
     r.perEmp.forEach((p) => empRows.push([p.user.name, p.user.position, p.hadir, p.extra]));
@@ -1888,7 +1888,8 @@ function LaporanTab({ state }) {
           <p className="text-xs s-muted mb-1">🏆 Motor terlaris bulan ini</p>
           <p className="font-extrabold text-lg">{top.name}</p>
           <p className="text-sm s-muted mb-3">{top.count} unit terjual ({Math.round(top.count / r.total * 100)}%)</p>
-          <div className="grid grid-cols-2 gap-2"><Read label="Penjualan" value={rp(top.revenue)} /><Read label="Keuntungan" value={rp(top.profit)} accent="#10b981" /></div>
+          <div className="grid grid-cols-2 gap-2"><Read label="Penjualan" value={rp(top.revenue)} /><Read label="Keuntungan kotor" value={rp(top.profit)} accent="#10b981" /></div>
+          <div className="mt-2"><Read label="Keuntungan bersih" value={rp(top.net)} accent="var(--accent)" /></div>
         </Card>
       )}
 
