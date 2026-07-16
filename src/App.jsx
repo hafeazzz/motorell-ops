@@ -1077,6 +1077,23 @@ function estimateProfit(state) {
   return { ready: ready.length, counted: withPrice.length, noPrice: ready.length - withPrice.length, gross, bonusPeople, commissionPerUnit, commission, investorCut, investorUnits, net: gross - commission - investorCut };
 }
 
+/* Rincian keuntungan SATU unit: kotor − komisi penjualan − jatah investor = bersih.
+   Pakai aturan yang sama persis dgn estimateProfit (versi agregat) biar angka per-unit dan
+   totalnya tidak beda:
+   - kotor    = harga jual − modal beli − pengeluaran unit
+   - komisi   = SALE_BONUS × jumlah orang saleBonus (Omen + Beceng = 2 × 200rb sekarang; dinamis)
+   - investor = kotor × investorShare% (cuma kalau untung & ada kode investor)
+   Balik null kalau harga jual belum diisi (tidak bisa dihitung, jangan dianggap 0). */
+function unitProfit(state, unit) {
+  if (!unit || !unit.sellPrice) return null;
+  const gross = unit.sellPrice - unit.buyPrice - expByUnit(state, unit.id);
+  const bonusPeople = (state.users || []).filter((u) => u.saleBonus).length;
+  const commission = bonusPeople * SALE_BONUS;
+  const share = +unit.investorShare || 0;
+  const investorCut = unit.investorCode && share > 0 && gross > 0 ? Math.round((gross * share) / 100) : 0;
+  return { gross, bonusPeople, commission, share, investorCut, net: gross - commission - investorCut };
+}
+
 // Angka Rupiah dengan animasi hitung-naik (pola sama seperti CountVal, tapi hasilnya diformat rp()).
 function RpCount({ v }) {
   const [n, setN] = useState(0);
@@ -1478,6 +1495,37 @@ function ExpenseModal({ data, units, me, onClose, update }) {
     </Modal>
   );
 }
+/* Rincian keuntungan satu motor untuk Detail unit: Keuntungan Kotor (hijau, spt sebelumnya)
+   dikurangi komisi penjualan & jatah investor -> Keuntungan Bersih (accent/highlight).
+   Cuma dipanggil di balik isMgr, jadi tidak perlu cek role di sini. */
+function ProfitBreakdown({ state, unit }) {
+  const p = unitProfit(state, unit);
+  if (!p) return <p className="text-[11px] s-muted -mt-1">Isi target harga jual dulu buat lihat keuntungannya.</p>;
+  const minus = (v) => (v > 0 ? `- ${rp(v)}` : rp(0));
+  return (
+    <div className="text-[11px] s-soft rounded-xl px-3 py-2.5 space-y-1">
+      <div className="flex justify-between gap-2">
+        <span className="s-muted">Keuntungan kotor</span>
+        <span className={`font-bold ${p.gross >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(p.gross)}</span>
+      </div>
+      <div className="flex justify-between gap-2">
+        <span className="s-muted">Komisi penjualan ({p.bonusPeople} × {rp(SALE_BONUS)})</span>
+        <span className="font-semibold text-rose-500">{minus(p.commission)}</span>
+      </div>
+      {unit.investorCode && p.share > 0 && (
+        <div className="flex justify-between gap-2">
+          <span className="s-muted">Jatah investor {unit.investorCode} ({p.share}%)</span>
+          <span className="font-semibold text-rose-500">{minus(p.investorCut)}</span>
+        </div>
+      )}
+      <div className="flex justify-between gap-2 pt-1.5 border-t s-border">
+        <span className="font-bold">Keuntungan bersih</span>
+        <span className={`font-extrabold ${p.net >= 0 ? "ac-text" : "text-rose-500"}`}>{rp(p.net)}</span>
+      </div>
+    </div>
+  );
+}
+
 function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, update }) {
   const unit = state.units.find((u) => u.id === unitId); if (!unit) return null;
   const isMgr = me && (me.role === "owner" || me.role === "admin");
@@ -1525,24 +1573,12 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><DateBox label="Tanggal masuk" value={unit.inDate} onChange={(v) => setField("inDate", v)} /><DateBox label="Tanggal keluar (terjual)" value={unit.soldAt} onChange={(v) => setField("soldAt", v || null)} /></div>
       <div className="grid grid-cols-2 gap-2"><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} defaultValue={unit.odometer || ""} onBlur={(e) => setField("odometer", +e.target.value || 0)} placeholder="cth: 5000" /></Field></div>
-      {isMgr && unit.investorCode && (() => {
-        const share = +unit.investorShare || 0;
-        const modal = unit.buyPrice + expByUnit(state, unitId);
-        const profit = unit.sellPrice ? unit.sellPrice - modal : null;
-        const iCut = profit !== null && share > 0 ? Math.round((profit * share) / 100) : null;
-        return (
-          <div className="mb-4">
-            <Field label={`Bagi hasil investor ${unit.investorCode} (%)`}><input type="number" min="0" max="100" className={inputCls} defaultValue={unit.investorShare || ""} onBlur={(e) => setField("investorShare", Math.max(0, Math.min(100, +e.target.value || 0)))} placeholder="cth: 20" /></Field>
-            {share > 0 && (profit !== null ? (
-              <div className="text-[11px] s-soft rounded-xl px-3 py-2.5 space-y-1 -mt-1">
-                <div className="flex justify-between gap-2"><span className="s-muted">Keuntungan motor ini</span><span className="font-semibold">{rp(profit)}</span></div>
-                <div className="flex justify-between gap-2"><span className="s-muted">Jatah investor ({share}%)</span><span className="font-semibold ac-text">{rp(iCut)}</span></div>
-                <div className="flex justify-between gap-2 pt-1.5 border-t s-border"><span className="font-semibold">Keuntungan bersih ({100 - share}%)</span><span className="font-extrabold text-emerald-500">{rp(profit - iCut)}</span></div>
-              </div>
-            ) : <p className="text-[11px] s-muted -mt-1">Isi target harga jual dulu buat lihat pembagiannya.</p>)}
-          </div>
-        );
-      })()}
+      {isMgr && unit.investorCode && (
+        <Field label={`Bagi hasil investor ${unit.investorCode} (%)`}><input type="number" min="0" max="100" className={inputCls} defaultValue={unit.investorShare || ""} onBlur={(e) => setField("investorShare", Math.max(0, Math.min(100, +e.target.value || 0)))} placeholder="cth: 20" /></Field>
+      )}
+      {isMgr && (
+        <div className="mb-4"><ProfitBreakdown state={state} unit={unit} /></div>
+      )}
       <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Foto motor</span>
         {unit.photo ? (
           <div className="space-y-2"><img src={unit.photo} className="w-full aspect-square object-cover rounded-xl" alt="" /><div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => photoRef.current && photoRef.current.click()}><Camera size={14} className="inline mr-1 -mt-0.5" />Ganti foto</Btn><Btn variant="ghost" onClick={() => setField("photo", "")} className="!text-rose-500">Hapus foto</Btn></div></div>
