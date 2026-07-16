@@ -1806,6 +1806,9 @@ function monthlyReport(state, ym) {
   const sold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, ym));
   const revenue = sold.reduce((a, u) => a + (u.sellPrice || 0), 0);
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expFor(u.id)), 0);
+  // Keuntungan bersih = kotor − komisi penjualan − jatah investor, per unit lalu dijumlah.
+  // Pakai unitProfit biar aturannya sama persis dgn rincian di Detail unit & estimateProfit.
+  const netProfit = sold.reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : (u.sellPrice || 0) - u.buyPrice - expFor(u.id)); }, 0);
   const byName = {};
   sold.forEach((u) => { byName[u.name] = byName[u.name] || { count: 0, profit: 0, revenue: 0 }; byName[u.name].count++; byName[u.name].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].revenue += (u.sellPrice || 0); });
   const groups = Object.entries(byName).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
@@ -1818,7 +1821,7 @@ function monthlyReport(state, ym) {
     const days = state.attendance.filter((a) => a.userId === u.id && inMonth(a.date, ym));
     return { user: u, hadir: days.length, extra: totalExtraFor(state, u, ym) };
   });
-  return { sold, total: sold.length, revenue, profit, groups, perEmp, teamLive, teamBolos };
+  return { sold, total: sold.length, revenue, profit, netProfit, groups, perEmp, teamLive, teamBolos };
 }
 function ensureXLSX() {
   return new Promise((resolve, reject) => {
@@ -1891,7 +1894,8 @@ function LaporanTab({ state }) {
 
       <Card className="p-4">
         <p className="font-bold text-sm mb-3">Pemasukan</p>
-        <div className="grid grid-cols-2 gap-2"><Read label="Total penjualan" value={rp(r.revenue)} /><Read label="Total keuntungan" value={rp(r.profit)} accent="#10b981" /></div>
+        <div className="grid grid-cols-2 gap-2"><Read label="Total penjualan" value={rp(r.revenue)} /><Read label="Total keuntungan kotor" value={rp(r.profit)} accent="#10b981" /></div>
+        <div className="mt-2"><Read label="Total keuntungan bersih" value={rp(r.netProfit)} accent="var(--accent)" /></div>
       </Card>
 
       <Card className="p-4">
