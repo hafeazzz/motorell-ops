@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Bike, Wallet, Video, CheckSquare, Users, Home, Plus, LogOut,
   Clock, BadgeCheck, X, Trash2, Link as LinkIcon, TrendingUp,
@@ -6,8 +6,7 @@ import {
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
   MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge,
-  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive,
-  History, CornerDownLeft, Sparkles
+  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -212,7 +211,7 @@ function normalize(s) {
     inspections: arr(s.inspections, []),
   };
   out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
-  out.units = out.units.map((u) => ({ investorCode: "", investorShare: 0, soldAt: null, siapAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
+  out.units = out.units.map((u) => ({ investorCode: "", investorShare: 0, soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
   return out;
@@ -448,8 +447,6 @@ function MotorellOps() {
   const [handbookOpen, setHandbookOpen] = useState(false);
   const [inspeksiOpen, setInspeksiOpen] = useState(false);
   const [focusUnit, setFocusUnit] = useState(null); // buka detail unit di Keuangan dari alur Inspeksi
-  const [focusArchiveUnit, setFocusArchiveUnit] = useState(null); // buka detail unit terjual di Arsip
-  const [paletteOpen, setPaletteOpen] = useState(false); // command palette (Ctrl/Cmd+K)
   const touch = useRef({ x: 0, y: 0 });
   const logoTaps = useRef(0); const logoTimer = useRef(null);
   const onLogoTap = () => { logoTaps.current++; if (logoTimer.current) clearTimeout(logoTimer.current); logoTimer.current = setTimeout(() => { logoTaps.current = 0; }, 1500); if (logoTaps.current >= 5) { logoTaps.current = 0; window.dispatchEvent(new CustomEvent("mr-catrun")); } };
@@ -548,14 +545,6 @@ function MotorellOps() {
     try { let m = document.querySelector('meta[name="theme-color"]'); if (!m) { m = document.createElement("meta"); m.name = "theme-color"; document.head.appendChild(m); } m.setAttribute("content", c); } catch (e) {}
   }, [dark]);
 
-  // Ctrl/Cmd+K buka/tutup command palette dari tab mana pun. Dipasang sebelum early-return
-  // di bawah supaya urutan hook konsisten (aturan hooks React).
-  useEffect(() => {
-    const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setPaletteOpen((v) => !v); } };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   if (!state) return <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
   if (!me) return (
     <>
@@ -581,14 +570,6 @@ function MotorellOps() {
   ];
   const order = tabs.map((t) => t.id);
   const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
-  // Buka Detail unit dari mana pun (dashboard / command palette): unit terjual -> Arsip, sisanya -> Keuangan.
-  // Reuse pola focusUnit yang sudah dipakai alur Inspeksi (lihat InspeksiPage onOpenUnit).
-  const openUnit = (id) => {
-    const u = state && state.units.find((x) => x.id === id); if (!u) return;
-    setPaletteOpen(false);
-    if (u.status === "terjual") { goTab("arsip"); setFocusArchiveUnit(id); }
-    else { goTab("uang"); setFocusUnit(id); }
-  };
 
   return (
     <div onClick={clickSound} className={`mr-app mr-shell ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
@@ -790,7 +771,6 @@ button:active{transform:scale(.97)}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6 cursor-pointer select-none" onClick={onLogoTap} draggable="false" /></div>
             <div className="flex items-center gap-2 shrink-0">
-              <button type="button" onClick={() => setPaletteOpen(true)} aria-label="Cari" title="Cari (Ctrl/Cmd+K)" className="shrink-0 p-2 rounded-xl bg-white/10"><Search size={16} /></button>
               <button type="button" onClick={() => setHandbookOpen(true)} aria-label="Handbook" title="Handbook" className="shrink-0 p-2 rounded-xl bg-white/10 ring-1 ring-white/15 grid place-items-center"><BookOpen size={16} strokeWidth={2.4} color="currentColor" /></button>
               <button type="button" onClick={() => setChatOpen(true)} aria-label="Chat" className="shrink-0 p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button type="button" onClick={toggleDark} aria-label="Ganti tema" className="shrink-0 p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -809,14 +789,14 @@ button:active{transform:scale(.97)}
           </Card></div>
         )}
         <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
-          {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} onInspeksi={() => setInspeksiOpen(true)} onOpenUnit={openUnit} />}
+          {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} onInspeksi={() => setInspeksiOpen(true)} />}
           {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "uang" && <UangTab state={state} me={me} update={update} onInspeksi={() => setInspeksiOpen(true)} focusUnit={focusUnit} onFocusConsumed={() => setFocusUnit(null)} />}
           {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "task" && (isOwner ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
           {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} />}
           {tab === "laporan" && <LaporanTab state={state} />}
-          {tab === "arsip" && <ArsipTab state={state} me={me} update={update} focusUnit={focusArchiveUnit} onFocusConsumed={() => setFocusArchiveUnit(null)} />}
+          {tab === "arsip" && <ArsipTab state={state} me={me} update={update} />}
         </div>
       </main>
 
@@ -850,7 +830,6 @@ button:active{transform:scale(.97)}
         <HandbookPage open={handbookOpen} onClose={() => setHandbookOpen(false)} isMgr={isMgr} />
       </HandbookErrorBoundary>
       <InspeksiPage open={inspeksiOpen} onClose={() => setInspeksiOpen(false)} me={me} update={update} state={state} onOpenUnit={(id) => { setInspeksiOpen(false); goTab("uang"); setFocusUnit(id); }} />
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} state={state} me={me} isMgr={isMgr} onOpenUnit={openUnit} go={goTab} />
       <FunFX />
       {welcome && <WelcomeOverlay user={welcome} onDone={() => setWelcome(null)} />}
 
@@ -1202,7 +1181,7 @@ function GreetingBanner({ children }) {
     </div>
   );
 }
-function HomeTab({ state, me, isOwner, go, onInspeksi, onOpenUnit }) {
+function HomeTab({ state, me, isOwner, go, onInspeksi }) {
   const [, setTick] = useState(0);
   useEffect(() => { const iv = setInterval(() => setTick((t) => t + 1), 60000); return () => clearInterval(iv); }, []);
   const g = greeting();
@@ -1212,11 +1191,6 @@ function HomeTab({ state, me, isOwner, go, onInspeksi, onOpenUnit }) {
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
   const stokAktif = state.units.filter((u) => u.status !== "terjual").length;
   const monthProfit = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
-  // Dashboard "Command Center" (owner/admin): revenue bulan ini + sinyal yang butuh tindakan.
-  const revenueMTD = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).reduce((a, u) => a + (u.sellPrice || 0), 0);
-  const perluChecklist = state.units.filter((u) => u.status !== "terjual" && !u.inspectionResult);
-  const siapNoPrice = state.units.filter((u) => u.status === "siap" && !(u.sellPrice > 0));
-  const openTasks = state.tasks.filter((t) => !t.done).length;
   const todayAbsen = state.attendance.filter((a) => a.date === today());
   const myTasks = state.tasks.filter((t) => t.userId === me.id && !t.done);
   const myExtras = manualExtras(state, me.id, month());
@@ -1230,12 +1204,9 @@ function HomeTab({ state, me, isOwner, go, onInspeksi, onOpenUnit }) {
       <Fade delay={120}>
         {isOwner ? (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <Stat label="Stok aktif" value={stokAktif} sub={`Terjual bln ini: ${monthSold}`} icon={Bike} color="#f97316" valueColor="#f97316" />
-            <Stat label="Terjual bulan ini" value={monthSold} icon={TrendingUp} color="#10b981" />
-            <Stat label="Revenue bulan ini" value={rp(revenueMTD)} small icon={Wallet} color="#8b5cf6" />
-            <Stat label="Profit bulan ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" />
+            <Stat label="Stok aktif" value={stokAktif} sub={`Terjual bulan ini: ${monthSold}`} icon={Bike} color="#f97316" valueColor="#f97316" />
             <Stat label="Hadir hari ini" value={todayAbsen.length} sub={`Dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
-            <Stat label="Perlu checklist" value={perluChecklist.length} icon={ClipboardCheck} color="#f59e0b" valueColor={perluChecklist.length ? "#f59e0b" : undefined} />
+            <Stat label="Profit bulan ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" className="col-span-2 lg:col-span-1" />
           </div>
         ) : (
           <div className="space-y-3">
@@ -1247,26 +1218,6 @@ function HomeTab({ state, me, isOwner, go, onInspeksi, onOpenUnit }) {
           </div>
         )}
       </Fade>
-
-      {isOwner && (
-        <Fade delay={160}>
-          <Card className="p-4">
-            <p className="font-bold text-sm mb-2 flex items-center gap-1.5"><Bell size={15} className="ac-text" />Perlu perhatian hari ini</p>
-            {(() => {
-              const rows = [];
-              perluChecklist.slice(0, 4).forEach((u) => rows.push({ id: "chk-" + u.id, label: u.name || "Unit", tag: "Belum checklist", color: "amber", onClick: () => onOpenUnit && onOpenUnit(u.id) }));
-              siapNoPrice.slice(0, 4).forEach((u) => rows.push({ id: "prc-" + u.id, label: u.name || "Unit", tag: "Harga jual kosong", color: "rose", onClick: () => onOpenUnit && onOpenUnit(u.id) }));
-              if (openTasks > 0) rows.push({ id: "task", label: `${openTasks} task belum kelar`, tag: "Task", color: "blue", onClick: () => go("tim") });
-              if (!rows.length) return <p className="text-sm s-muted py-1.5 flex items-center gap-1.5"><Sparkles size={15} className="ac-text" />Semua beres — tidak ada yang mendesak ✨</p>;
-              return <div className="space-y-1.5">{rows.map((r) => (
-                <button key={r.id} onClick={r.onClick} className="w-full flex items-center justify-between gap-2 s-soft rounded-xl px-3 py-2.5 text-left active:scale-[0.99] transition">
-                  <span className="text-sm font-medium truncate">{r.label}</span><Tag color={r.color}>{r.tag}</Tag>
-                </button>
-              ))}</div>;
-            })()}
-          </Card>
-        </Fade>
-      )}
 
       {!isOwner && (me.saleBonus || extraTotal > 0) && (
         <Fade delay={180}>
@@ -1511,7 +1462,6 @@ function createUnit(s, data, byId, presetId) {
     buyPrice: +data.buyPrice || 0, sellPrice: +data.sellPrice || 0,
     status: data.status || "proses", investorCode: (data.investorCode || "").trim(),
     inDate: data.inDate || today(), soldAt: null, odometer: +data.odometer || 0,
-    siapAt: data.status === "siap" || data.status === "terjual" ? today() : null,
     ...(data.inspectionResult ? { inspectionResult: data.inspectionResult } : {}),
   });
   s.expenses.push({ id: uid(), unitId: id, cat: "jasa", amount: 250000, note: "Cek unit", by: byId || null, date: today() });
@@ -1545,40 +1495,6 @@ function ExpenseModal({ data, units, me, onClose, update }) {
     </Modal>
   );
 }
-/* Timeline riwayat satu unit di Detail unit. Tahapannya diturunkan dari field yang sudah ada
-   (tidak ada tabel history terpisah): masuk (inDate), checklist selesai (inspectionResult.date),
-   siap dipasarkan (siapAt), terjual (soldAt). Tahap tanpa tanggal dilewati, jadi unit lama yang
-   belum punya siapAt/inspeksi tetap tampil rapi. */
-function UnitTimeline({ unit }) {
-  const fmt = (d) => { try { return new Date(d + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return d; } };
-  const steps = [
-    { key: "masuk", icon: "📥", label: "Masuk inventory", date: unit.inDate },
-    { key: "checklist", icon: "✅", label: "Checklist inspeksi selesai", date: unit.inspectionResult && unit.inspectionResult.date },
-    { key: "siap", icon: "📢", label: "Siap dipasarkan", date: unit.siapAt },
-    { key: "terjual", icon: "🤝", label: "Terjual", date: unit.soldAt },
-  ].filter((s) => s.date);
-  if (!steps.length) return null;
-  return (
-    <div className="s-soft rounded-xl p-3 mb-4">
-      <p className="text-xs font-bold flex items-center gap-1.5 mb-2.5"><History size={14} className="ac-text" />Riwayat unit</p>
-      <div>
-        {steps.map((s, i) => (
-          <div key={s.key} className="flex gap-2.5 items-stretch">
-            <div className="flex flex-col items-center">
-              <div className="w-7 h-7 rounded-full grid place-items-center text-sm ac-soft shrink-0">{s.icon}</div>
-              {i < steps.length - 1 && <div className="flex-1 my-1" style={{ borderLeft: "2px solid var(--border)" }} />}
-            </div>
-            <div className={i < steps.length - 1 ? "pb-3" : ""}>
-              <p className="text-xs font-semibold leading-tight">{s.label}</p>
-              <p className="text-[11px] s-muted">{fmt(s.date)}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* Rincian keuntungan satu motor untuk Detail unit: Keuntungan Kotor (hijau, spt sebelumnya)
    dikurangi komisi penjualan & jatah investor -> Keuntungan Bersih (accent/highlight).
    Cuma dipanggil di balik isMgr, jadi tidak perlu cek role di sini. */
@@ -1627,8 +1543,6 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       u.status = status;
       if (status === "terjual") { if (!u.soldAt) u.soldAt = today(); }
       else { u.soldAt = null; }
-      // Catat kapan unit mulai dipasarkan (dipakai timeline riwayat). Sekali set, tidak ditimpa.
-      if ((status === "siap" || status === "terjual") && !u.siapAt) u.siapAt = today();
       return s;
     });
     if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
@@ -1674,8 +1588,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
         <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
       </div>
       <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "ac-border ac-soft" : "s-border s-muted"}`}>{l}</button>)}</div></div>
-      <UnitTimeline unit={unit} />
-      {Object.keys(byCat).length > 0 &&<><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
+      {Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
       <p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
       <div className="space-y-1.5 mb-4">{items.length === 0 && <p className="text-xs s-muted">Belum ada pengeluaran.</p>}{items.map((e) => <div key={e.id} className="flex items-center justify-between s-soft rounded-lg px-3 py-2"><div className="text-sm"><p className="font-medium">{e.note || CATS[e.cat].label}</p><p className="text-[10px] s-muted">{CATS[e.cat].label} · {userName(e.by)} · {e.date}</p></div><div className="flex items-center gap-2"><span className="text-sm font-bold">{rp(e.amount)}</span><button onClick={() => onEditExp(e)} className="s-muted"><Pencil size={14} /></button><button onClick={() => delExp(e.id)} className="text-rose-400"><Trash2 size={14} /></button></div></div>)}</div>
       <Btn variant="ghost" onClick={() => onAddExp(unit.id)} className="w-full"><Plus size={15} className="inline mr-1 -mt-0.5" />Tambah pengeluaran</Btn>
@@ -2009,7 +1922,7 @@ function LaporanTab({ state }) {
 }
 
 /* ============ Arsip (motor terjual, riwayat inspeksi, absen harian) ============ */
-function ArsipTab({ state, me, update, focusUnit, onFocusConsumed }) {
+function ArsipTab({ state, me, update }) {
   const isMgr = me.role === "owner" || me.role === "admin";
   const [sub, setSub] = useState("terjual");
   const [detail, setDetail] = useState(null);
@@ -2018,8 +1931,6 @@ function ArsipTab({ state, me, update, focusUnit, onFocusConsumed }) {
   const [soldShow, setSoldShow] = useState(20);
   const [inspShow, setInspShow] = useState(20);
   const [ymAbsen, setYmAbsen] = useState(month());
-  // Buka detail unit terjual dari luar (command palette / dashboard). Meniru pola di UangTab.
-  useEffect(() => { if (focusUnit) { setSub("terjual"); setDetail(focusUnit); onFocusConsumed && onFocusConsumed(); } }, [focusUnit]);
   const sold = [...state.units].filter((u) => u.status === "terjual").sort((a, b) => (b.soldAt || "").localeCompare(a.soldAt || ""));
   const inspected = state.inspections || [];
   const dateLabel = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-";
@@ -2954,74 +2865,6 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
       <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
       <input ref={notePhotoRef} type="file" accept="image/*" className="hidden" onChange={onNotePhoto} />
       <Lightbox src={zoom} onClose={() => setZoom("")} />
-    </div>
-  );
-}
-
-/* Command palette global (Ctrl/Cmd+K atau tombol Search di header). Cari unit/tim/investor lalu
-   klik untuk buka detail terkait. Overlay dirender inline di dalam .mr-app supaya kelas tema
-   jalan (bukan portal ke body — itu kehilangan CSS var tema, lihat catatan di CLAUDE.md). */
-function CommandPalette({ open, onClose, state, me, isMgr, onOpenUnit, go }) {
-  const [q, setQ] = useState("");
-  const [dq, setDq] = useState(""); // query ter-debounce 300ms
-  const inputRef = useRef(null);
-  useEffect(() => { if (open) { setQ(""); setDq(""); const t = setTimeout(() => inputRef.current && inputRef.current.focus(), 30); return () => clearTimeout(t); } }, [open]);
-  useEffect(() => { const t = setTimeout(() => setDq(q.trim().toLowerCase()), 300); return () => clearTimeout(t); }, [q]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  const groups = useMemo(() => {
-    if (!open || !dq) return [];
-    const units = state.units || [];
-    const match = (s) => (s || "").toLowerCase().includes(dq);
-    const res = [];
-    const aktif = units.filter((u) => u.status !== "terjual" && (match(u.name) || match(u.plate) || match(u.investorCode)));
-    const terjual = units.filter((u) => u.status === "terjual" && (match(u.name) || match(u.plate) || match(u.investorCode)));
-    const tim = (state.users || []).filter((u) => match(u.name) || match(u.position));
-    const invSet = [...new Set(units.map((u) => u.investorCode).filter((c) => c && match(c)))];
-    if (aktif.length) res.push({ key: "aktif", label: "Unit aktif", items: aktif.slice(0, 6).map((u) => ({ id: u.id, title: u.name || "Unit", sub: [u.plate, u.status === "siap" ? "Siap jual" : "Proses"].filter(Boolean).join(" · "), action: () => onOpenUnit(u.id) })) });
-    if (terjual.length) res.push({ key: "terjual", label: "Unit terjual", items: terjual.slice(0, 6).map((u) => ({ id: u.id, title: u.name || "Unit", sub: [u.plate, "Terjual"].filter(Boolean).join(" · "), action: () => onOpenUnit(u.id) })) });
-    if (isMgr && tim.length) res.push({ key: "tim", label: "Tim", items: tim.slice(0, 6).map((u) => ({ id: u.id, title: u.name, sub: u.position || "", action: () => { onClose(); go("tim"); } })) });
-    if (invSet.length) res.push({ key: "inv", label: "Investor", items: invSet.slice(0, 6).map((c) => { const first = units.find((u) => u.investorCode === c); return { id: "inv-" + c, title: "Kode " + c, sub: units.filter((u) => u.investorCode === c).length + " unit", action: () => first && onOpenUnit(first.id) }; }) });
-    return res;
-  }, [open, dq, state, isMgr]);
-
-  const flat = groups.flatMap((g) => g.items);
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[12vh]" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50 mr-bdrop" />
-      <div className="relative w-full max-w-lg s-surface s-text rounded-2xl border s-border overflow-hidden mr-modal-in mr-glow" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 px-3.5 py-3 border-b s-border">
-          <Search size={17} className="s-muted shrink-0" />
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && flat.length) { e.preventDefault(); flat[0].action(); } }}
-            placeholder="Cari motor, plat, tim, investor…" className="flex-1 bg-transparent outline-none text-sm s-text placeholder:text-slate-400" />
-          <button onClick={onClose} className="shrink-0 p-1 rounded-lg s-soft s-muted"><X size={15} /></button>
-        </div>
-        <div className="max-h-[52vh] overflow-auto py-1.5">
-          {!dq && <p className="text-xs s-muted px-4 py-6 text-center">Ketik untuk mencari unit, anggota tim, atau kode investor.</p>}
-          {dq && !flat.length && <p className="text-xs s-muted px-4 py-6 text-center">Tidak ada hasil untuk “{q}”.</p>}
-          {groups.map((g) => (
-            <div key={g.key} className="px-1.5 pb-1">
-              <p className="text-[10px] font-bold s-muted uppercase tracking-wide px-2.5 pt-2 pb-1">{g.label}</p>
-              {g.items.map((it) => (
-                <button key={it.id} onClick={it.action} className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-left active:scale-[0.99] transition">
-                  <span className="min-w-0"><span className="text-sm font-semibold block truncate">{it.title}</span>{it.sub && <span className="text-[11px] s-muted block truncate">{it.sub}</span>}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center gap-3 px-3.5 py-2 border-t s-border text-[10px] s-muted">
-          <span className="flex items-center gap-1"><CornerDownLeft size={11} /> buka hasil pertama</span>
-          <span>Esc menutup</span>
-        </div>
-      </div>
     </div>
   );
 }
