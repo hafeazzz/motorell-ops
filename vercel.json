@@ -1,8 +1,4 @@
 {
-  "crons": [
-    { "path": "/api/send-break-alarm?type=absen_masuk", "schedule": "45 1 * * *" },
-    { "path": "/api/send-break-alarm?type=break_start", "schedule": "0 5 * * *" },
-    { "path": "/api/send-break-alarm?type=break_end", "schedule": "30 6 * * *" },
-    { "path": "/api/send-break-alarm?type=absen_pulang", "schedule": "0 11 * * *" }
-  ]
+  "$comment": "Penjadwalan alarm dipindah ke Supabase pg_cron (lihat supabase/migrations/alarm_pgcron.sql) karena Vercel plan Hobby membatasi 2 cron job & waktunya tidak presisi (bisa molor ~59 menit). Endpoint /api/send-break-alarm tetap dipakai -- sekarang dipicu oleh pg_cron, bukan Vercel Cron.",
+  "crons": []
 }
