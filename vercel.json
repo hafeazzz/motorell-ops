@@ -1,4 +1,4 @@
 {
-  "$comment": "Penjadwalan alarm dipindah ke Supabase pg_cron (lihat supabase/migrations/alarm_pgcron.sql) karena Vercel plan Hobby membatasi 2 cron job & waktunya tidak presisi (bisa molor ~59 menit). Endpoint /api/send-break-alarm tetap dipakai -- sekarang dipicu oleh pg_cron, bukan Vercel Cron.",
-  "crons": []
+  "crons": [],
+  "buildCommand": "npm run build",
 }
