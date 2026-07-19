@@ -396,7 +396,7 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(err, info) { try { console.error("Motorell crash:", err, info); } catch (e) {} }
   render() {
     if (this.state.err) return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#020617", color: "#e2e8f0", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 24, background: "#020617", color: "#e2e8f0", fontFamily: "system-ui, sans-serif" }}>
         <div style={{ maxWidth: 360, textAlign: "center" }}>
           <p style={{ fontSize: 40, marginBottom: 8 }}>🛠️</p>
           <p style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Ada error kecil</p>
@@ -545,7 +545,7 @@ function MotorellOps() {
     try { let m = document.querySelector('meta[name="theme-color"]'); if (!m) { m = document.createElement("meta"); m.name = "theme-color"; document.head.appendChild(m); } m.setAttribute("content", c); } catch (e) {}
   }, [dark]);
 
-  if (!state) return <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
+  if (!state) return <div style={{ minHeight: "100dvh" }} className="min-h-screen grid place-items-center bg-slate-950 text-slate-400">Memuat Motorell Ops…</div>;
   if (!me) return (
     <>
       <Auth state={state} onLogin={handleLogin} update={update} />
@@ -572,7 +572,7 @@ function MotorellOps() {
   const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
 
   return (
-    <div onClick={clickSound} className={`mr-app mr-shell ${dark ? "dark" : ""} min-h-screen s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
+    <div onClick={clickSound} className={`mr-app mr-shell ${dark ? "dark" : ""} s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
 .mr-app{--bg:#edf0f5;--surface:#ffffff;--soft:#eef1f6;--border:#e5e9f0;--text:#0f172a;--muted:#64748b;--header:#0f172a;--accent:#1e293b;--accent-contrast:#ffffff}
 .mr-app.dark{--bg:#08090c;--surface:#0d0e13;--soft:#15171e;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#040405;--accent:#f5f7fa;--accent-contrast:#0b0c10}
@@ -750,7 +750,11 @@ button:active{transform:scale(.97)}
 /* ===== ruang bawah supaya navbar mengambang tidak menutupi konten ===== */
 /* Nav-nya fixed: di HP nempel ke bawah, di desktop mengambang (bottom-6, tombolnya lebih besar),
    jadi ruang yang dibutuhkan beda — makanya pakai media query, bukan satu angka. */
-.mr-shell{padding-bottom:calc(5.5rem + env(safe-area-inset-bottom))}
+/* min-height pakai dvh (dynamic viewport height) supaya tinggi container ikut viewport yang
+   TERLIHAT di iOS Safari — bukan 100vh yang di iOS = viewport MAKSIMAL (saat toolbar tersembunyi),
+   yang bikin container lebih tinggi dari layar → muncul area hitam kosong di bawah & bottom-nav
+   (fixed) kelihatan mengambang. Baris 100vh dulu sebagai fallback utk browser lama tanpa dvh. */
+.mr-shell{min-height:100vh;min-height:100dvh;padding-bottom:calc(5.5rem + env(safe-area-inset-bottom))}
 @media(min-width:768px){.mr-shell{padding-bottom:9rem}}
 
 /* ===== cetak / simpan PDF (dipakai tombol di Detail inspeksi) =====
@@ -904,7 +908,7 @@ function Auth({ state, onLogin, update }) {
     } else { pw === sel.password ? onLogin(sel) : setErr("Password salah."); }
   };
   return (
-    <div className="mr-app dark min-h-screen text-white grid place-items-center p-6 relative overflow-hidden" style={{ background: "linear-gradient(160deg,#0c0d12 0%,#14161d 55%,#050608 100%)" }}>
+    <div className="mr-app dark min-h-screen text-white grid place-items-center p-6 relative overflow-hidden" style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#0c0d12 0%,#14161d 55%,#050608 100%)" }}>
       <div className="w-full max-w-sm relative z-10">
         <img src={LOGO} alt="Motorell" className="h-10 mx-auto mb-1" />
         <p className="text-center text-white/80 font-bold tracking-[0.3em] text-xs mb-8">OPS</p>
