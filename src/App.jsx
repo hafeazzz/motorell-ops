@@ -1220,6 +1220,8 @@ function HomeTab({ state, me, isOwner, go, onInspeksi }) {
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
   const stokAktif = state.units.filter((u) => u.status !== "terjual").length;
   const monthProfit = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
+  // Keuntungan bersih bln ini = kotor − komisi − jatah investor (pakai unitProfit, sama spt Laporan).
+  const monthNet = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)); }, 0);
   const todayAbsen = state.attendance.filter((a) => a.date === today());
   const myTasks = state.tasks.filter((t) => t.userId === me.id && !t.done);
   const myExtras = manualExtras(state, me.id, month());
@@ -1235,7 +1237,15 @@ function HomeTab({ state, me, isOwner, go, onInspeksi }) {
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <Stat label="Stok aktif" value={stokAktif} sub={`Terjual bulan ini: ${monthSold}`} icon={Bike} color="#f97316" valueColor="#f97316" />
             <Stat label="Hadir hari ini" value={todayAbsen.length} sub={`Dari ${state.users.length - 1} staff`} icon={Clock} color="#3b82f6" />
-            <Stat label="Profit bulan ini" value={rp(monthProfit)} small icon={TrendingUp} color="#10b981" className="col-span-2 lg:col-span-1" />
+            {/* Keuntungan bersih = angka utama; kotor jadi info sekunder abu-abu di bawahnya */}
+            <Tilt className="rounded-2xl h-full col-span-2 lg:col-span-1">
+              <Card className="p-3.5 h-full">
+                <div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: "#10b98122" }}><TrendingUp size={16} style={{ color: "#10b981" }} /></div>
+                <p className="font-extrabold text-base leading-tight" style={{ color: "#10b981" }}><CountVal v={rp(monthNet)} /></p>
+                <p className="text-[11px] s-muted">Keuntungan bersih bln ini</p>
+                <p className="text-[10px] s-muted mt-0.5">Kotor: {rp(monthProfit)}</p>
+              </Card>
+            </Tilt>
           </div>
         ) : (
           <div className="space-y-3">
