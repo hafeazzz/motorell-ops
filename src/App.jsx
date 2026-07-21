@@ -1242,7 +1242,7 @@ function HomeTab({ state, me, isOwner, go, onInspeksi }) {
               <Card className="p-3.5 h-full">
                 <div className="w-8 h-8 rounded-lg grid place-items-center mb-2" style={{ background: "#10b98122" }}><TrendingUp size={16} style={{ color: "#10b981" }} /></div>
                 <p className="font-extrabold text-base leading-tight" style={{ color: "#10b981" }}><CountVal v={rp(monthNet)} /></p>
-                <p className="text-[11px] s-muted">Keuntungan bersih bln ini</p>
+                <p className="text-[11px] s-muted">Keuntungan bersih bulan ini</p>
                 <p className="text-[10px] s-muted mt-0.5">Kotor: {rp(monthProfit)}</p>
               </Card>
             </Tilt>
