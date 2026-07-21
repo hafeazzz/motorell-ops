@@ -1947,8 +1947,15 @@ function LaporanTab({ state }) {
 
       <Card className="p-4">
         <p className="font-bold text-sm mb-3">Pemasukan</p>
-        <div className="grid grid-cols-2 gap-2"><Read label="Total penjualan" value={rp(r.revenue)} /><Read label="Total keuntungan kotor" value={rp(r.profit)} accent="#10b981" /></div>
-        <div className="mt-2"><Read label="Total keuntungan bersih" value={rp(r.netProfit)} accent="var(--accent)" /></div>
+        <div className="grid grid-cols-2 gap-2">
+          <Read label="Total penjualan" value={rp(r.revenue)} />
+          {/* Keuntungan bersih = angka utama; keuntungan kotor jadi info sekunder abu-abu di bawahnya */}
+          <div className="s-soft rounded-xl py-2 px-3 text-center">
+            <p className="text-[10px] s-muted mb-0.5">Total keuntungan bersih</p>
+            <p className="text-sm font-bold break-words leading-tight" style={{ color: "var(--accent)" }}>{rp(r.netProfit)}</p>
+            <p className="text-[10px] s-muted mt-0.5">Kotor: {rp(r.profit)}</p>
+          </div>
+        </div>
       </Card>
 
       <Card className="p-4">
