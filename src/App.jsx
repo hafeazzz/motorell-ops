@@ -214,14 +214,30 @@ function normalize(s) {
   out.units = out.units.map((u) => ({ investorCode: "", investorShare: 0, soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
+  out._attMigrated = s._attMigrated === true; // absen sudah dipindah ke tabel `attendance`?
   return out;
 }
 async function loadState() {
+  let base = null;
   try {
     const r = await window.storage.get(STORE_KEY, true);
-    if (r && r.value) { const p = JSON.parse(r.value); if (p && p._v === SEED_V) return normalize(p); }
+    if (r && r.value) { const p = JSON.parse(r.value); if (p && p._v === SEED_V) base = normalize(p); }
   } catch (e) {}
-  const s = seed(); try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} return s;
+  if (!base) { base = seed(); try { await window.storage.set(STORE_KEY, JSON.stringify(base), true); } catch (e) {} }
+  // Absensi kini punya tabel sendiri (`attendance`) supaya tidak ketimpa saat blob kv ditulis ulang.
+  // Tabel = sumber kebenaran untuk state.attendance. Blob lama dipindah SEKALI (upsert, idempotent).
+  try {
+    if (window.storage.attList) {
+      if (!base._attMigrated && (base.attendance || []).length && window.storage.attMigrate) {
+        const m = await window.storage.attMigrate(base.attendance);
+        if (m && m.ok) { base._attMigrated = true; try { await window.storage.set(STORE_KEY, JSON.stringify(base), true); } catch (e) {} }
+      }
+      const att = await window.storage.attList();
+      if (att) base.attendance = att; // att === null berarti fetch GAGAL → biarkan pakai data blob
+      if (window.storage.attPrunePhotos) window.storage.attPrunePhotos(PHOTO_TTL_DAYS);
+    }
+  } catch (e) {}
+  return base;
 }
 async function saveState(s) { try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} }
 
@@ -537,6 +553,13 @@ function MotorellOps() {
     const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then((s) => { setState(s); setMe((m) => (m ? (s.users.find((u) => u.id === m.id) || m) : m)); }); });
     return unsub;
   }, []);
+  // Absensi punya tabel & realtime sendiri: update HP lain langsung nyambung tanpa reload penuh.
+  useEffect(() => {
+    if (!window.storage || !window.storage.attSubscribe) return;
+    const reload = async () => { try { const att = await window.storage.attList(); if (att) setState((s) => (s ? { ...s, attendance: att } : s)); } catch (e) {} };
+    const unsub = window.storage.attSubscribe(reload);
+    return unsub;
+  }, []);
   const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
   useEffect(() => {
@@ -570,6 +593,8 @@ function MotorellOps() {
   ];
   const order = tabs.map((t) => t.id);
   const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
+  // Sinkron ulang state.attendance dari tabel (dipakai AbsenTab setelah absen masuk/keluar tersimpan).
+  const reloadAttendance = async () => { try { const att = await window.storage.attList(); if (att) setState((s) => (s ? { ...s, attendance: att } : s)); } catch (e) {} };
 
   return (
     <div onClick={clickSound} className={`mr-app mr-shell ${dark ? "dark" : ""} s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
@@ -794,7 +819,7 @@ button:active{transform:scale(.97)}
         )}
         <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
           {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} onInspeksi={() => setInspeksiOpen(true)} />}
-          {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
+          {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} reloadAttendance={reloadAttendance} />}
           {tab === "uang" && <UangTab state={state} me={me} update={update} onInspeksi={() => setInspeksiOpen(true)} focusUnit={focusUnit} onFocusConsumed={() => setFocusUnit(null)} />}
           {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "task" && (isMgr ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
@@ -1271,13 +1296,35 @@ const Quick = ({ label, icon: Ic, onClick }) => (
 );
 
 /* ============ Absensi ============ */
-function AbsenTab({ state, me, isOwner, isMgr, update }) {
+function AbsenTab({ state, me, isOwner, isMgr, update, reloadAttendance }) {
   const myToday = state.attendance.find((a) => a.userId === me.id && a.date === today());
   const live = state.lives.find((l) => l.date === today());
   const [photo, setPhoto] = useState(""); const [photoOut, setPhotoOut] = useState(""); const [liveLink, setLiveLink] = useState(""); const [livePhoto, setLivePhoto] = useState(""); const [zoom, setZoom] = useState("");
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
-  const clockIn = () => { if (!photo) return; update((s) => { s.attendance.push({ id: uid(), userId: me.id, date: today(), clockIn: now(), photo }); return s; }); setPhoto(""); window.dispatchEvent(new CustomEvent("mr-greet", { detail: { msg: "Absen masuk tercatat. Semangat ya! 👋" } })); };
-  const clockOut = () => { if (!photoOut) return; update((s) => { const a = s.attendance.find((x) => x.userId === me.id && x.date === today()); if (a) { a.clockOut = now(); a.photoOut = photoOut; } return s; }); setPhotoOut(""); window.dispatchEvent(new CustomEvent("mr-greet", { detail: { msg: "Absen keluar tercatat. Hati-hati di jalan! 👋" } })); };
+  // Absen kini ditulis ke tabel `attendance` (bukan blob kv) → tidak bisa ketimpa. Setiap tulisan
+  // DIVERIFIKASI dgn baca-ulang; kalau gagal, TAMPILKAN error dan JANGAN pura-pura sukses.
+  const clockIn = async () => {
+    if (!photo || busy) return;
+    setBusy(true); setErr("");
+    const rec = { id: `att-${me.id}-${today()}`, userId: me.id, date: today(), clockIn: now(), photo };
+    const res = await window.storage.attClockIn(rec);
+    const check = res.ok ? await window.storage.attGet(rec.id) : null;
+    if (!res.ok || !check) { setBusy(false); setErr("Absen masuk GAGAL tersimpan. Cek koneksi lalu coba lagi — jangan tinggalkan halaman sebelum berhasil."); return; }
+    await reloadAttendance(); setPhoto(""); setBusy(false);
+    window.dispatchEvent(new CustomEvent("mr-greet", { detail: { msg: "Absen masuk tercatat. Semangat ya! 👋" } }));
+  };
+  const clockOut = async () => {
+    if (!photoOut || busy) return;
+    setBusy(true); setErr("");
+    const rec = state.attendance.find((x) => x.userId === me.id && x.date === today());
+    if (!rec) { setBusy(false); setErr("Data absen masuk hari ini tidak ketemu. Refresh halaman lalu coba lagi."); return; }
+    const res = await window.storage.attClockOut(rec.id, now(), photoOut);
+    const check = res.ok ? await window.storage.attGet(rec.id) : null;
+    if (!res.ok || !check || !check.clockOut) { setBusy(false); setErr("Absen keluar GAGAL tersimpan. Cek koneksi lalu coba lagi."); return; }
+    await reloadAttendance(); setPhotoOut(""); setBusy(false);
+    window.dispatchEvent(new CustomEvent("mr-greet", { detail: { msg: "Absen keluar tercatat. Hati-hati di jalan! 👋" } }));
+  };
   const markLive = () => { if (!liveLink && !livePhoto) return; update((s) => { s.lives.push({ id: uid(), date: today(), by: me.id, link: liveLink, photo: livePhoto }); return s; }); setLiveLink(""); setLivePhoto(""); };
   const staff = state.users.filter((u) => u.role !== "owner");
 
@@ -1287,8 +1334,9 @@ function AbsenTab({ state, me, isOwner, isMgr, update }) {
         <Card className="p-4">
           <p className="font-bold mb-1">Absensi hari ini</p>
           <p className="text-xs s-muted mb-3">{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Jakarta" })}</p>
+          {err && <div className="tg-rose rounded-xl px-3 py-2.5 mb-3 text-xs font-semibold flex items-start gap-2"><X size={15} className="shrink-0 mt-0.5" /><span>{err}</span></div>}
           {!myToday ? (
-            <div className="space-y-3"><div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto di kantor (wajib)</p><PhotoInput value={photo} onChange={setPhoto} label="Foto selfie / lokasi kantor" /></div><Btn onClick={clockIn} disabled={!photo} className="w-full"><Clock size={16} className="inline mr-1.5 -mt-0.5" />Absen masuk</Btn></div>
+            <div className="space-y-3"><div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto di kantor (wajib)</p><PhotoInput value={photo} onChange={setPhoto} label="Foto selfie / lokasi kantor" /></div><Btn onClick={clockIn} disabled={!photo || busy} className="w-full"><Clock size={16} className="inline mr-1.5 -mt-0.5" />{busy ? "Menyimpan…" : "Absen masuk"}</Btn></div>
           ) : (
             <div className="flex items-center gap-3 tg-emerald rounded-xl px-3 py-2.5">{myToday.photo && <img src={myToday.photo} onClick={() => setZoom(myToday.photo)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><BadgeCheck size={18} /> Hadir · masuk {myToday.clockIn}</div></div>
           )}
@@ -1300,7 +1348,7 @@ function AbsenTab({ state, me, isOwner, isMgr, update }) {
             {!myToday ? (
               <p className="text-xs s-muted">Absen masuk dulu sebelum bisa absen keluar.</p>
             ) : !myToday.clockOut ? (
-              <div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto sebelum pulang (wajib)</p><PhotoInput value={photoOut} onChange={setPhotoOut} label="Foto selfie / lokasi kantor" /><Btn onClick={clockOut} disabled={!photoOut} variant="dark" className="w-full mt-2"><LogOut size={16} className="inline mr-1.5 -mt-0.5" />Absen keluar</Btn></div>
+              <div><p className="text-xs font-semibold s-muted mb-1.5">Bukti foto sebelum pulang (wajib)</p><PhotoInput value={photoOut} onChange={setPhotoOut} label="Foto selfie / lokasi kantor" /><Btn onClick={clockOut} disabled={!photoOut || busy} variant="dark" className="w-full mt-2"><LogOut size={16} className="inline mr-1.5 -mt-0.5" />{busy ? "Menyimpan…" : "Absen keluar"}</Btn></div>
             ) : (
               <div className="flex items-center gap-3 tg-blue rounded-xl px-3 py-2.5">{myToday.photoOut && <img src={myToday.photoOut} onClick={() => setZoom(myToday.photoOut)} className="w-12 h-12 rounded-lg object-cover" alt="" />}<div className="text-sm font-semibold flex items-center gap-1.5"><LogOut size={18} /> Pulang · keluar {myToday.clockOut}</div></div>
             )}

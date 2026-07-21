@@ -169,6 +169,81 @@ storage.chatSubscribe = (cb) => {
   return () => { try { supabase.removeChannel(channel); } catch (e) {} };
 };
 
+/* ===== ABSENSI: tabel terpisah (append-only style) supaya absen barengan tidak saling timpa.
+   Lihat supabase/migrations/attendance_table.sql. clockIn = INSERT 1 baris, clockOut = UPDATE
+   baris itu saja — TIDAK menimpa blob kv, jadi tidak bisa ketimpa perubahan lain (unit, task, dll).
+   Reads di App.jsx tetap lewat state.attendance yang di-load dari tabel ini saat loadState. ===== */
+const ATT_TABLE = "attendance";
+const attRowToRec = (r) => ({
+  id: r.id, userId: r.user_id, date: r.date,
+  clockIn: r.clock_in || undefined, photo: r.photo || "",
+  clockOut: r.clock_out || undefined, photoOut: r.photo_out || undefined,
+});
+// Balik null kalau GAGAL fetch (beda dari [] yang berarti tabel kosong) — caller pakai ini
+// untuk memutuskan fallback ke data blob lama, bukan menimpa dgn kosong.
+storage.attList = async () => {
+  try {
+    const { data, error } = await supabase.from(ATT_TABLE).select("*").order("date", { ascending: true });
+    if (error) throw error;
+    return (data || []).map(attRowToRec);
+  } catch (e) { console.error("attList error:", e); return null; }
+};
+storage.attClockIn = async (rec) => {
+  try {
+    // upsert by id (id deterministik per user+tanggal) → retry setelah gagal-verifikasi tidak
+    // bikin baris dobel; kolom clock_out/photo_out yang tidak disebут tidak ikut ketimpa.
+    const { error } = await supabase.from(ATT_TABLE).upsert({
+      id: rec.id, user_id: rec.userId, date: rec.date, clock_in: rec.clockIn || null, photo: rec.photo || null,
+    }, { onConflict: "id" });
+    if (error) throw error;
+    return { ok: true };
+  } catch (e) { console.error("attClockIn error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.attClockOut = async (id, clockOut, photoOut) => {
+  try {
+    const { error } = await supabase.from(ATT_TABLE).update({ clock_out: clockOut || null, photo_out: photoOut || null }).eq("id", id);
+    if (error) throw error;
+    return { ok: true };
+  } catch (e) { console.error("attClockOut error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+// Verifikasi pasca-simpan: baca ulang 1 baris untuk memastikan benar-benar tersimpan di server.
+storage.attGet = async (id) => {
+  try {
+    const { data, error } = await supabase.from(ATT_TABLE).select("*").eq("id", id).maybeSingle();
+    if (error) throw error;
+    return data ? attRowToRec(data) : null;
+  } catch (e) { console.error("attGet error:", e); return null; }
+};
+// Migrasi sekali: pindahkan absen lama dari blob kv ke tabel. upsert by id = idempotent (aman diulang).
+storage.attMigrate = async (recs) => {
+  try {
+    const rows = (recs || []).filter((r) => r && r.id && r.userId && r.date).map((r) => ({
+      id: r.id, user_id: r.userId, date: r.date,
+      clock_in: r.clockIn || null, photo: r.photo || null, clock_out: r.clockOut || null, photo_out: r.photoOut || null,
+    }));
+    if (!rows.length) return { ok: true, migrated: 0 };
+    const { error } = await supabase.from(ATT_TABLE).upsert(rows, { onConflict: "id" });
+    if (error) throw error;
+    return { ok: true, migrated: rows.length };
+  } catch (e) { console.error("attMigrate error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+// Buang foto absen yang lebih tua dari `days` hari (catatan absennya tetap ada) — biar payload
+// attList tidak membengkak seiring waktu, sama semangatnya dgn prunePhotos di blob.
+storage.attPrunePhotos = async (days = 2) => {
+  try {
+    const d = new Date(); d.setDate(d.getDate() - days);
+    const p2 = (n) => String(n).padStart(2, "0");
+    const cutoff = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    await supabase.from(ATT_TABLE).update({ photo: null, photo_out: null }).lt("date", cutoff).not("photo", "is", null);
+  } catch (e) { console.error("attPrunePhotos error:", e); }
+};
+storage.attSubscribe = (cb) => {
+  const channel = supabase.channel("attendance-stream")
+    .on("postgres_changes", { event: "*", schema: "public", table: ATT_TABLE }, () => cb())
+    .subscribe();
+  return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+};
+
 /* ===== HANDBOOK: file PDF disimpan di Supabase Storage (bucket "handbook") =====
    File selalu bernama tetap "handbook.pdf" supaya gampang di-replace & URL stabil.
    Metadata kecil (tanggal update) disimpan di kv "motorell-handbook-meta". */
