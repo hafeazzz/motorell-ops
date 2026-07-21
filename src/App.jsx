@@ -797,7 +797,7 @@ button:active{transform:scale(.97)}
           {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "uang" && <UangTab state={state} me={me} update={update} onInspeksi={() => setInspeksiOpen(true)} focusUnit={focusUnit} onFocusConsumed={() => setFocusUnit(null)} />}
           {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
-          {tab === "task" && (isOwner ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
+          {tab === "task" && (isMgr ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
           {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} />}
           {tab === "laporan" && <LaporanTab state={state} />}
           {tab === "arsip" && <ArsipTab state={state} me={me} update={update} />}

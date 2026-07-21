@@ -18,6 +18,16 @@ const ALARMS = [
 ];
 const CATCHUP_MIN = 45;
 
+// Reminder LIBUR tiap hari SENIN (WIB): aktif Selasa–Minggu, Senin di-skip total.
+// Weekday dihitung di zona Asia/Jakarta biar konsisten walau timezone perangkat beda.
+function isReminderActiveDay() {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", weekday: "short" }).format(new Date()) !== "Mon";
+  } catch (e) {
+    return new Date().getDay() !== 1; // fallback: hari lokal (0=Minggu, 1=Senin)
+  }
+}
+
 function wibNow() {
   try {
     const parts = new Intl.DateTimeFormat("en-GB", {
@@ -76,6 +86,7 @@ export default function useAttendanceReminder(enabled, skip, onAlarm) {
     };
 
     const tick = () => {
+      if (!isReminderActiveDay()) return; // Senin: reminder libur, tidak trigger apa pun
       const { date, mins } = wibNow();
       for (const a of ALARMS) {
         if (mins < a.target || mins > a.target + CATCHUP_MIN) continue;

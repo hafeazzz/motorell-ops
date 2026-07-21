@@ -26,6 +26,15 @@ function wibDateStr() {
   return `${g("year")}-${g("month")}-${g("day")}`;
 }
 
+// Reminder LIBUR tiap hari SENIN (WIB): aktif Selasa–Minggu. Weekday di zona Asia/Jakarta.
+function isMondayWIB() {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", weekday: "short" }).format(new Date()) === "Mon";
+  } catch (e) {
+    return false;
+  }
+}
+
 async function loadState() {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/kv?key=eq.${STATE_KEY}&select=value`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
@@ -75,6 +84,11 @@ export default async function handler(req, res) {
   const type = (req.query && req.query.type) || "break_start";
   const alarm = ALARMS[type];
   if (!alarm) return res.status(400).json({ ok: false, error: `type tidak dikenal: ${type}` });
+
+  // Senin libur — tidak kirim push apa pun (kecuali ?force=1 untuk tes manual).
+  if (isMondayWIB() && !(req.query && req.query.force)) {
+    return res.status(200).json({ ok: false, skipped: "senin", type });
+  }
 
   try {
     const state = await loadState();

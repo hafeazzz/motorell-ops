@@ -16,6 +16,16 @@ const ALARMS = [
 // baru "sadar" lagi (visibilitychange ke visible) masih menganggap alarm hari itu berlaku.
 const CATCHUP_MIN = 45;
 
+// Reminder LIBUR tiap hari SENIN (WIB): aktif Selasa–Minggu, Senin di-skip total.
+// Weekday dihitung di zona Asia/Jakarta biar konsisten walau timezone perangkat beda.
+function isReminderActiveDay() {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", weekday: "short" }).format(new Date()) !== "Mon";
+  } catch (e) {
+    return new Date().getDay() !== 1; // fallback: hari lokal (0=Minggu, 1=Senin)
+  }
+}
+
 // Jam WIB (Asia/Jakarta) — dihitung sendiri di sini biar hook ini tidak perlu impor dari
 // App.jsx (App.jsx yang impor hook ini; impor balik = circular import).
 function wibNow() {
@@ -74,6 +84,7 @@ export default function useBreakReminder(onAlarm) {
     };
 
     const tick = () => {
+      if (!isReminderActiveDay()) return; // Senin: reminder libur, tidak trigger apa pun
       const { date, mins } = wibNow();
       for (const a of ALARMS) {
         const target = a.h * 60 + a.m;
