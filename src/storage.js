@@ -244,6 +244,63 @@ storage.attSubscribe = (cb) => {
   return () => { try { supabase.removeChannel(channel); } catch (e) {} };
 };
 
+/* ===== TASK: tabel terpisah (sama pola dgn attendance/chat) supaya assign/centang/hapus task
+   tidak saling timpa saat blob kv ditulis ulang. assign = INSERT, centang/edit = UPDATE, hapus =
+   DELETE — 1 baris per operasi. Reads di App.jsx tetap lewat state.tasks yang di-load dari sini. */
+const TASK_TABLE = "tasks";
+const taskRowToRec = (r) => ({ id: r.id, userId: r.user_id, title: r.title || "", done: !!r.done, setBy: r.set_by || "self", date: r.date || "" });
+storage.taskList = async () => {
+  try {
+    const { data, error } = await supabase.from(TASK_TABLE).select("*").order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data || []).map(taskRowToRec);
+  } catch (e) { console.error("taskList error:", e); return null; } // null = GAGAL (beda dari [] kosong)
+};
+storage.taskAdd = async (rec) => {
+  try {
+    // upsert by id → aman kalau kepanggil dobel (retry), tidak bikin baris ganda.
+    const { error } = await supabase.from(TASK_TABLE).upsert({
+      id: rec.id, user_id: rec.userId, title: rec.title || "", done: !!rec.done, set_by: rec.setBy || "self", date: rec.date || null,
+    }, { onConflict: "id" });
+    if (error) throw error;
+    return { ok: true };
+  } catch (e) { console.error("taskAdd error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.taskToggle = async (id, done) => {
+  try { const { error } = await supabase.from(TASK_TABLE).update({ done: !!done }).eq("id", id); if (error) throw error; return { ok: true }; }
+  catch (e) { console.error("taskToggle error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.taskEdit = async (id, title) => {
+  try { const { error } = await supabase.from(TASK_TABLE).update({ title: title || "" }).eq("id", id); if (error) throw error; return { ok: true }; }
+  catch (e) { console.error("taskEdit error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.taskDelete = async (id) => {
+  try { const { error } = await supabase.from(TASK_TABLE).delete().eq("id", id); if (error) throw error; return { ok: true }; }
+  catch (e) { console.error("taskDelete error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.taskDeleteByUser = async (userId) => {
+  try { const { error } = await supabase.from(TASK_TABLE).delete().eq("user_id", userId); if (error) throw error; return { ok: true }; }
+  catch (e) { console.error("taskDeleteByUser error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+// Migrasi sekali dari blob kv ke tabel (upsert by id = idempotent).
+storage.taskMigrate = async (recs) => {
+  try {
+    const rows = (recs || []).filter((r) => r && r.id).map((r) => ({
+      id: r.id, user_id: r.userId, title: r.title || "", done: !!r.done, set_by: r.setBy || "self", date: r.date || null,
+    }));
+    if (!rows.length) return { ok: true, migrated: 0 };
+    const { error } = await supabase.from(TASK_TABLE).upsert(rows, { onConflict: "id" });
+    if (error) throw error;
+    return { ok: true, migrated: rows.length };
+  } catch (e) { console.error("taskMigrate error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.taskSubscribe = (cb) => {
+  const channel = supabase.channel("tasks-stream")
+    .on("postgres_changes", { event: "*", schema: "public", table: TASK_TABLE }, () => cb())
+    .subscribe();
+  return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+};
+
 /* ===== HANDBOOK: file PDF disimpan di Supabase Storage (bucket "handbook") =====
    File selalu bernama tetap "handbook.pdf" supaya gampang di-replace & URL stabil.
    Metadata kecil (tanggal update) disimpan di kv "motorell-handbook-meta". */

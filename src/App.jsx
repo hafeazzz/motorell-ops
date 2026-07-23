@@ -215,6 +215,7 @@ function normalize(s) {
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
   out._attMigrated = s._attMigrated === true; // absen sudah dipindah ke tabel `attendance`?
+  out._taskMigrated = s._taskMigrated === true; // task sudah dipindah ke tabel `tasks`?
   return out;
 }
 async function loadState() {
@@ -235,6 +236,17 @@ async function loadState() {
       const att = await window.storage.attList();
       if (att) base.attendance = att; // att === null berarti fetch GAGAL → biarkan pakai data blob
       if (window.storage.attPrunePhotos) window.storage.attPrunePhotos(PHOTO_TTL_DAYS);
+    }
+  } catch (e) {}
+  // Task juga punya tabel sendiri (`tasks`) supaya assign/centang/hapus tidak ketimpa. Sama pola absensi.
+  try {
+    if (window.storage.taskList) {
+      if (!base._taskMigrated && (base.tasks || []).length && window.storage.taskMigrate) {
+        const m = await window.storage.taskMigrate(base.tasks);
+        if (m && m.ok) { base._taskMigrated = true; try { await window.storage.set(STORE_KEY, JSON.stringify(base), true); } catch (e) {} }
+      }
+      const tsk = await window.storage.taskList();
+      if (tsk) base.tasks = tsk; // null = fetch gagal → pakai data blob apa adanya
     }
   } catch (e) {}
   return base;
@@ -560,6 +572,13 @@ function MotorellOps() {
     const unsub = window.storage.attSubscribe(reload);
     return unsub;
   }, []);
+  // Task juga: tabel & realtime sendiri → badge & notifikasi task selalu akurat lintas HP.
+  useEffect(() => {
+    if (!window.storage || !window.storage.taskSubscribe) return;
+    const reload = async () => { try { const t = await window.storage.taskList(); if (t) setState((s) => (s ? { ...s, tasks: t } : s)); } catch (e) {} };
+    const unsub = window.storage.taskSubscribe(reload);
+    return unsub;
+  }, []);
   const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
   useEffect(() => {
@@ -595,6 +614,15 @@ function MotorellOps() {
   const goTab = (id) => { const ci = order.indexOf(tab), ni = order.indexOf(id); setDir(ni >= ci ? 1 : -1); setTab(id); };
   // Sinkron ulang state.attendance dari tabel (dipakai AbsenTab setelah absen masuk/keluar tersimpan).
   const reloadAttendance = async () => { try { const att = await window.storage.attList(); if (att) setState((s) => (s ? { ...s, attendance: att } : s)); } catch (e) {} };
+  // Operasi task lewat tabel `tasks` (bukan blob) → tidak bisa ketimpa. Tiap op lalu reload dari tabel.
+  const reloadTasks = async () => { try { const t = await window.storage.taskList(); if (t) setState((s) => (s ? { ...s, tasks: t } : s)); } catch (e) {} };
+  const taskOps = {
+    add: async (rec) => { const r = await window.storage.taskAdd(rec); await reloadTasks(); return r; },
+    toggle: async (id, done) => { await window.storage.taskToggle(id, done); await reloadTasks(); },
+    edit: async (id, title) => { await window.storage.taskEdit(id, title); await reloadTasks(); },
+    del: async (id) => { await window.storage.taskDelete(id); await reloadTasks(); },
+    delByUser: async (userId) => { await window.storage.taskDeleteByUser(userId); await reloadTasks(); },
+  };
 
   return (
     <div onClick={clickSound} className={`mr-app mr-shell ${dark ? "dark" : ""} s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
@@ -822,8 +850,8 @@ button:active{transform:scale(.97)}
           {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} reloadAttendance={reloadAttendance} />}
           {tab === "uang" && <UangTab state={state} me={me} update={update} onInspeksi={() => setInspeksiOpen(true)} focusUnit={focusUnit} onFocusConsumed={() => setFocusUnit(null)} />}
           {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
-          {tab === "task" && (isMgr ? <OwnerTaskTab state={state} update={update} /> : <TaskTab state={state} me={me} update={update} />)}
-          {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} />}
+          {tab === "task" && (isMgr ? <OwnerTaskTab state={state} update={update} taskOps={taskOps} /> : <TaskTab state={state} me={me} update={update} taskOps={taskOps} />)}
+          {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} taskOps={taskOps} />}
           {tab === "laporan" && <LaporanTab state={state} />}
           {tab === "arsip" && <ArsipTab state={state} me={me} update={update} />}
         </div>
@@ -1705,18 +1733,19 @@ function MediaEditModal({ item, onClose, update }) {
 }
 
 /* ============ Task ============ */
-function TaskTab({ state, me, update }) {
+function TaskTab({ state, me, update, taskOps }) {
   const [title, setTitle] = useState("");
   const [editId, setEditId] = useState(null);
   const [editVal, setEditVal] = useState("");
   const mine = state.tasks.filter((t) => t.userId === me.id);
   const active = mine.filter((t) => !t.done);
   const history = mine.filter((t) => t.done);
-  const toggle = (id) => update((s) => { const t = s.tasks.find((x) => x.id === id); if (t) t.done = !t.done; return s; });
-  const add = () => { if (!title.trim()) return; update((s) => { s.tasks.push({ id: uid(), userId: me.id, title: title.trim(), done: false, setBy: "self", date: today() }); return s; }); setTitle(""); };
-  const del = (id) => update((s) => { s.tasks = s.tasks.filter((t) => t.id !== id); return s; });
+  // Task lewat tabel `tasks` (bukan blob) → tidak bisa ketimpa perubahan lain.
+  const toggle = (id) => { const t = state.tasks.find((x) => x.id === id); taskOps.toggle(id, t ? !t.done : true); };
+  const add = () => { if (!title.trim()) return; taskOps.add({ id: uid(), userId: me.id, title: title.trim(), done: false, setBy: "self", date: today() }); setTitle(""); };
+  const del = (id) => taskOps.del(id);
   const startEdit = (t) => { setEditId(t.id); setEditVal(t.title); };
-  const saveEdit = () => { if (editVal.trim()) update((s) => { const t = s.tasks.find((x) => x.id === editId); if (t) t.title = editVal.trim(); return s; }); setEditId(null); };
+  const saveEdit = () => { if (editVal.trim()) taskOps.edit(editId, editVal.trim()); setEditId(null); };
   return (
     <div className="space-y-3 pt-3">
       <p className="font-bold text-lg">Task harian kamu</p>
@@ -1762,12 +1791,12 @@ function TaskTab({ state, me, update }) {
 }
 
 /* ============ Task (Owner) ============ */
-function OwnerTaskTab({ state, update }) {
+function OwnerTaskTab({ state, update, taskOps }) {
   const [openAdd, setOpenAdd] = useState(false);
   const [editTask, setEditTask] = useState(null);
   const staff = state.users.filter((u) => u.role !== "owner");
-  const toggle = (id) => update((s) => { const t = s.tasks.find((x) => x.id === id); if (t) t.done = !t.done; return s; });
-  const del = (id) => update((s) => { s.tasks = s.tasks.filter((t) => t.id !== id); return s; });
+  const toggle = (id) => { const t = state.tasks.find((x) => x.id === id); taskOps.toggle(id, t ? !t.done : true); };
+  const del = (id) => taskOps.del(id);
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Kelola Task</p><Btn onClick={() => setOpenAdd(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div>
@@ -1794,17 +1823,17 @@ function OwnerTaskTab({ state, update }) {
           );
         })}
       </div>
-      <OwnerTaskModal openFor={openAdd} staff={staff} onClose={() => setOpenAdd(false)} update={update} />
-      <OwnerTaskEditModal task={editTask} onClose={() => setEditTask(null)} update={update} />
+      <OwnerTaskModal openFor={openAdd} staff={staff} onClose={() => setOpenAdd(false)} taskOps={taskOps} />
+      <OwnerTaskEditModal task={editTask} onClose={() => setEditTask(null)} taskOps={taskOps} />
     </div>
   );
 }
-function OwnerTaskModal({ openFor, staff, onClose, update }) {
+function OwnerTaskModal({ openFor, staff, onClose, taskOps }) {
   const open = !!openFor;
   const [userId, setUserId] = useState("");
   const [title, setTitle] = useState("");
   useEffect(() => { if (open) { setUserId(typeof openFor === "string" ? openFor : (staff[0] && staff[0].id) || ""); setTitle(""); } }, [openFor]);
-  const save = () => { if (!title.trim() || !userId) return; const tt = title.trim(), uTo = userId; update((s) => { s.tasks.push({ id: uid(), userId: uTo, title: tt, done: false, setBy: "owner", date: today() }); return s; }); pushTo([uTo], "Task baru dari owner", tt); setTitle(""); onClose(); };
+  const save = () => { if (!title.trim() || !userId) return; const tt = title.trim(), uTo = userId; taskOps.add({ id: uid(), userId: uTo, title: tt, done: false, setBy: "owner", date: today() }); pushTo([uTo], "Task baru dari owner", tt); setTitle(""); onClose(); };
   return (
     <Modal open={open} onClose={onClose} title="Tambah task">
       <Field label="Untuk siapa"><select className={inputCls} value={userId} onChange={(e) => setUserId(e.target.value)}>{staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
@@ -1813,10 +1842,10 @@ function OwnerTaskModal({ openFor, staff, onClose, update }) {
     </Modal>
   );
 }
-function OwnerTaskEditModal({ task, onClose, update }) {
+function OwnerTaskEditModal({ task, onClose, taskOps }) {
   const [title, setTitle] = useState("");
   useEffect(() => { if (task) setTitle(task.title); }, [task]);
-  const save = () => { if (!title.trim()) return; update((s) => { const t = s.tasks.find((x) => x.id === task.id); if (t) t.title = title.trim(); return s; }); onClose(); };
+  const save = () => { if (!title.trim()) return; taskOps.edit(task.id, title.trim()); onClose(); };
   return (
     <Modal open={!!task} onClose={onClose} title="Edit task">
       <Field label="Task"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} /></Field>
@@ -1826,18 +1855,18 @@ function OwnerTaskEditModal({ task, onClose, update }) {
 }
 
 /* ============ Tim ============ */
-function TimTab({ state, update, isOwner }) {
+function TimTab({ state, update, isOwner, taskOps }) {
   const [openU, setOpenU] = useState(false); const [assignTo, setAssignTo] = useState(null); const [extraTo, setExtraTo] = useState(null);
   const [f, setF] = useState({ name: "", position: "Mekanik" }); const [taskTitle, setTaskTitle] = useState(""); const [extraVal, setExtraVal] = useState("");
   const openExtra = (u) => { setExtraVal(String(totalExtraFor(state, u, month()))); setExtraTo(u.id); };
   const saveExtra = () => { const id2 = extraTo; const target = Math.round(+extraVal || 0); update((s) => { const usr = s.users.find((x) => x.id === id2); const auto = saleBonusFor(s, usr, month()); const adj = target - auto; s.extras = s.extras.filter((e) => !(e.userId === id2 && !e.auto && inMonth(e.date, month()))); if (adj !== 0) s.extras.push({ id: uid(), userId: id2, amount: adj, note: "Penyesuaian owner", by: "u_own", date: today() }); return s; }); setExtraTo(null); };
   const addUser = () => { if (!f.name) return; update((s) => { s.users.push({ id: uid(), name: f.name, role: "staff", position: f.position, password: "", avatar: "" }); return s; }); setF({ name: "", position: "Mekanik" }); setOpenU(false); };
-  const assign = () => { if (!taskTitle) return; const tt = taskTitle, uidTo = assignTo; update((s) => { s.tasks.push({ id: uid(), userId: uidTo, title: tt, done: false, setBy: "owner", date: today() }); return s; }); pushTo([uidTo], "Task baru dari owner", tt); setTaskTitle(""); setAssignTo(null); };
+  const assign = () => { if (!taskTitle) return; const tt = taskTitle, uidTo = assignTo; taskOps.add({ id: uid(), userId: uidTo, title: tt, done: false, setBy: "owner", date: today() }); pushTo([uidTo], "Task baru dari owner", tt); setTaskTitle(""); setAssignTo(null); };
   const [editU, setEditU] = useState(null); const [ef, setEf] = useState({ name: "", position: "Mekanik", saleBonus: false, role: "staff" });
   const openEdit = (u) => { setEf({ name: u.name, position: u.position, saleBonus: !!u.saleBonus, role: u.role }); setEditU(u); };
   const saveEdit = () => { if (!ef.name) return; update((s) => { const u = s.users.find((x) => x.id === editU.id); if (u) { u.name = ef.name; u.position = ef.position; u.saleBonus = ef.saleBonus; u.role = ef.role; } return s; }); setEditU(null); };
   const resetPw = (id, name) => { if (window.confirm(`Reset password ${name}? Dia akan diminta bikin password baru saat login berikutnya.`)) update((s) => { const u = s.users.find((x) => x.id === id); if (u) u.password = ""; return s; }); };
-  const delUser = (id, name) => { if (window.confirm(`Hapus anggota "${name}"? Tindakan ini permanen.`)) update((s) => { s.users = s.users.filter((x) => x.id !== id); s.tasks = s.tasks.filter((t) => t.userId !== id); return s; }); };
+  const delUser = (id, name) => { if (window.confirm(`Hapus anggota "${name}"? Tindakan ini permanen.`)) { update((s) => { s.users = s.users.filter((x) => x.id !== id); return s; }); taskOps.delByUser(id); } }; // task anggota dihapus dari tabel `tasks`
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Tim</p>{isOwner && <Btn onClick={() => setOpenU(true)} className="!px-3 !py-2"><Plus size={16} /></Btn>}</div>
