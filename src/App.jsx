@@ -1449,20 +1449,23 @@ function UangTab({ state, me, update, onInspeksi, focusUnit, onFocusConsumed }) 
   const onCardPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const id = photoForRef.current; photoForRef.current = null; if (!f || !id) return; const data = await compress(f, 800, 0.5); if (data) update((s) => { const un = s.units.find((x) => x.id === id); if (un) un.photo = data; return s; }); };
   const visible = state.units.filter((u) => u.status !== "terjual" || !u.soldAt || inMonth(u.soldAt, month()));
   const archived = state.units.filter((u) => u.status === "terjual" && u.soldAt && !inMonth(u.soldAt, month())).length;
-  const filtered = visible.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
+  // Filter "Terjual" menampilkan SEMUA unit terjual (termasuk bulan lalu yang biasanya sudah pindah
+  // ke Arsip) — biar tidak membingungkan. Filter lain tetap dari `visible` (terjual bulan lalu
+  // disembunyikan supaya daftar Keuangan ringkas; rekap lengkapnya di Arsip/Laporan).
+  const filtered = (fs === "terjual" ? state.units : visible).filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
   const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "terjual", l: "Terjual" }];
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><div className="flex items-center gap-2"><Btn variant="ghost" onClick={() => onInspeksi && onInspeksi()} className="!px-3 !py-2"><ClipboardCheck size={15} className="inline mr-1 -mt-0.5" />Inspeksi</Btn><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div></div>
       {state.units.length === 0 && <Card className="p-8 text-center"><div className="text-5xl mb-2 cat-wiggle">🐱</div><p className="font-semibold text-sm">Belum ada unit motor</p><p className="text-xs s-muted mt-1">Tap tombol + di atas buat nambah motor pertama.</p></Card>}
-      {visible.length > 0 && (
+      {state.units.length > 0 && (
         <div className="space-y-2">
           <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 s-muted" /><input className={inputCls + " !pl-9"} placeholder="Cari motor / plat…" value={q} onChange={(e) => setQ(e.target.value)} />{q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 s-muted"><X size={15} /></button>}</div>
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">{FILTERS.map((ff) => <button key={ff.k} onClick={() => setFs(ff.k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${fs === ff.k ? "ac-bg" : "s-soft s-muted"}`}>{ff.l}</button>)}</div>
         </div>
       )}
-      {archived > 0 && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="ac-text" />{archived} motor terjual bulan lalu diarsipkan — rekapnya ada di Laporan.</p>}
-      {visible.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
+      {archived > 0 && fs !== "terjual" && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="ac-text" />{archived} motor terjual bulan lalu diarsipkan — pilih filter <b className="s-text">Terjual</b> atau buka <b className="s-text">Arsip</b> buat lihat.</p>}
+      {state.units.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{filtered.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
         const iShare = +u.investorShare || 0; const iCut = profit !== null && u.investorCode && iShare > 0 ? Math.round((profit * iShare) / 100) : null; const iNet = iCut !== null ? profit - iCut : null;
