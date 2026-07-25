@@ -1997,6 +1997,22 @@ function LaporanTab({ state }) {
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(empRows), "Per Karyawan");
     X.writeFile(wb, `Laporan-Motorell-${ym}.xlsx`);
   };
+  // Export CSV per bulan — mandiri (tanpa library). Kolom sama dgn sheet "Unit Terjual" Excel.
+  const exportCsv = () => {
+    const expFor = (id) => state.expenses.filter((e) => e.unitId === id).reduce((a, e) => a + e.amount, 0);
+    const cell = (v) => { const s = String(v == null ? "" : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const rows = [
+      ["Laporan Motorell", monthLabel(ym)], [],
+      ["Unit terjual", r.total], ["Total omzet (Rp)", r.revenue], ["Total profit kotor (Rp)", r.profit], ["Total profit bersih (Rp)", r.netProfit], [],
+      ["Nama", "Plat", "Odometer (km)", "Modal beli", "Pengeluaran", "Harga jual", "Profit kotor", "Komisi", "Jatah investor", "Profit bersih", "Tgl masuk", "Tgl keluar"],
+    ];
+    r.sold.forEach((u) => { const e = expFor(u.id); const p = unitProfit(state, u); const gross = (u.sellPrice || 0) - u.buyPrice - e; rows.push([u.name, u.plate || "", u.odometer || 0, u.buyPrice, e, u.sellPrice || 0, gross, p ? p.commission : 0, p ? p.investorCut : 0, p ? p.net : gross, u.inDate || "", u.soldAt || ""]); });
+    const csv = "﻿" + rows.map((row) => row.map(cell).join(",")).join("\r\n"); // BOM biar Excel baca UTF-8
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `Laporan-Motorell-${ym}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   return (
     <div className="space-y-3 pt-3 pb-4">
       <div className="flex items-center justify-between pt-1">
@@ -2007,7 +2023,11 @@ function LaporanTab({ state }) {
           <button disabled={isCurrent} onClick={() => setYm(shiftMonth(ym, 1))} className={`p-1.5 rounded-lg s-surface ${isCurrent ? "opacity-30" : ""}`}><ChevronRight size={16} /></button>
         </div>
       </div>
-      <button onClick={exportExcel} className="w-full flex items-center justify-center gap-2 s-soft rounded-xl py-2.5 text-sm font-semibold text-emerald-600"><Download size={15} />Unduh laporan Excel ({monthLabel(ym)})</button>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={exportExcel} className="flex items-center justify-center gap-2 s-soft rounded-xl py-2.5 text-sm font-semibold text-emerald-600"><Download size={15} />Unduh Excel</button>
+        <button onClick={exportCsv} className="flex items-center justify-center gap-2 s-soft rounded-xl py-2.5 text-sm font-semibold text-emerald-600"><Download size={15} />Unduh CSV</button>
+      </div>
+      <p className="text-[11px] s-muted text-center -mt-1">Laporan {monthLabel(ym)}</p>
 
       <Card className="p-4">
         <p className="font-bold text-sm mb-1 flex items-center gap-1.5"><PieIcon size={15} className="ac-text" />Motor terjual bulan ini</p>
