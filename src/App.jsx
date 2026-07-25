@@ -1483,6 +1483,7 @@ function UangTab({ state, me, update, onInspeksi, focusUnit, onFocusConsumed }) 
               <div className="mt-2 text-[11px] s-soft rounded-lg px-3 py-2 space-y-0.5">
                 <div className="flex justify-between gap-2"><span className="s-muted">Jatah investor {u.investorCode} ({iShare}%)</span><span className="font-semibold shrink-0">{rp(iCut)}</span></div>
                 <div className="flex justify-between gap-2"><span className="s-muted">Keuntungan bersih ({100 - iShare}%)</span><span className="font-bold text-emerald-500 shrink-0">{rp(iNet)}</span></div>
+                <div className="flex justify-between gap-2 pt-1 mt-0.5 border-t s-border"><span className="s-muted">Total Balik Modal Investor</span><span className="font-extrabold ac-text shrink-0">{rp(modal + iCut)}</span></div>
               </div>
             )}
             <Btn variant="ghost" onClick={() => setExpModal({ mode: "add", unitId: u.id })} className="w-full mt-3"><Plus size={15} className="inline mr-1 -mt-0.5" />Catat pengeluaran</Btn>
@@ -1592,6 +1593,7 @@ function ProfitBreakdown({ state, unit }) {
   const p = unitProfit(state, unit);
   if (!p) return <p className="text-[11px] s-muted -mt-1">Isi target harga jual dulu buat lihat keuntungannya.</p>;
   const minus = (v) => (v > 0 ? `- ${rp(v)}` : rp(0));
+  const modal = unit.buyPrice + expByUnit(state, unit.id); // total modal = harga beli + pengeluaran
   return (
     <div className="text-[11px] s-soft rounded-xl px-3 py-2.5 space-y-1">
       <div className="flex justify-between gap-2">
@@ -1612,6 +1614,15 @@ function ProfitBreakdown({ state, unit }) {
         <span className="font-bold">Keuntungan bersih</span>
         <span className={`font-extrabold ${p.net >= 0 ? "ac-text" : "text-rose-500"}`}>{rp(p.net)}</span>
       </div>
+      {/* Balik modal investor = total modal (beli + pengeluaran) + jatah profit-nya. Terpisah dari
+          hitungan keuntungan bersih bisnis di atas — ini "berapa yang investor terima". */}
+      {unit.investorCode && p.share > 0 && (
+        <div className="pt-1.5 mt-1 border-t s-border space-y-1">
+          <div className="flex justify-between gap-2"><span className="s-muted">Modal investor (total modal)</span><span className="font-semibold">{rp(modal)}</span></div>
+          <div className="flex justify-between gap-2"><span className="s-muted">Profit investor ({p.share}%)</span><span className="font-semibold text-emerald-500">+{rp(p.investorCut)}</span></div>
+          <div className="flex justify-between gap-2 pt-1 border-t s-border"><span className="font-bold">Total Balik Modal Investor</span><span className="font-extrabold ac-text shrink-0">{rp(modal + p.investorCut)}</span></div>
+        </div>
+      )}
     </div>
   );
 }
