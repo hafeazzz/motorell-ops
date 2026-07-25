@@ -2082,6 +2082,9 @@ function ArsipTab({ state, me, update, unitOps }) {
   const [inspShow, setInspShow] = useState(20);
   const [ymAbsen, setYmAbsen] = useState(month());
   const sold = [...state.units].filter((u) => u.status === "terjual").sort((a, b) => (b.soldAt || "").localeCompare(a.soldAt || ""));
+  // Rekap per bulan untuk header grup di daftar "Motor Terjual" (jumlah + omzet + profit).
+  const soldMonthAgg = {};
+  for (const u of sold) { const mk = (u.soldAt || "").slice(0, 7) || "—"; const g = soldMonthAgg[mk] || { count: 0, revenue: 0, profit: 0 }; g.count++; g.revenue += u.sellPrice || 0; g.profit += (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id); soldMonthAgg[mk] = g; }
   const inspected = state.inspections || [];
   const dateLabel = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-";
   return (
@@ -2095,10 +2098,18 @@ function ArsipTab({ state, me, update, unitOps }) {
       {sub === "terjual" && (
         <div className="space-y-2">
           {sold.length === 0 && <p className="text-center text-sm s-muted py-8">Belum ada motor terjual.</p>}
-          {sold.slice(0, soldShow).map((u) => {
+          {(() => { let lastMk = null; return sold.slice(0, soldShow).map((u) => {
             const profit = (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id);
+            const mk = (u.soldAt || "").slice(0, 7) || "—"; const showHeader = mk !== lastMk; lastMk = mk; const agg = soldMonthAgg[mk] || { count: 0, revenue: 0, profit: 0 };
             return (
-              <Card key={u.id} className="p-3">
+              <React.Fragment key={u.id}>
+              {showHeader && (
+                <div className="flex items-center justify-between gap-2 px-1 pt-2 pb-0.5">
+                  <p className="text-xs font-bold s-muted shrink-0">{mk === "—" ? "Tanpa tanggal" : monthLabel(mk)} · {agg.count} motor</p>
+                  {isMgr && <p className="text-[10px] s-muted text-right truncate">Omzet {rp(agg.revenue)} · Profit <span className={agg.profit >= 0 ? "text-emerald-500" : "text-rose-500"}>{rp(agg.profit)}</span></p>}
+                </div>
+              )}
+              <Card className="p-3">
                 <div className="flex items-center gap-3 cursor-pointer active:scale-[0.99] transition" onClick={() => setDetail(u.id)}>
                   {u.photo ? <img src={u.photo} className="w-12 h-12 rounded-lg object-cover shrink-0" alt="" /> : <div className="w-12 h-12 rounded-lg s-soft grid place-items-center shrink-0"><Bike size={18} className="s-muted" /></div>}
                   <div className="min-w-0 flex-1">
@@ -2115,8 +2126,9 @@ function ArsipTab({ state, me, update, unitOps }) {
                   </div>
                 </div>
               </Card>
+              </React.Fragment>
             );
-          })}
+          }); })()}
           {sold.length > soldShow && <Btn variant="ghost" onClick={() => setSoldShow((n) => n + 20)} className="w-full">Tampilkan lebih ({sold.length - soldShow} lagi)</Btn>}
         </div>
       )}
