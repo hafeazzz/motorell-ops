@@ -301,6 +301,48 @@ storage.taskSubscribe = (cb) => {
   return () => { try { supabase.removeChannel(channel); } catch (e) {} };
 };
 
+/* ===== UNIT MOTOR: tabel terpisah (sama pola dgn attendance/tasks) supaya tambah/edit/status/
+   hapus unit tidak saling timpa saat blob kv ditulis ulang. Seluruh objek unit disimpan di kolom
+   `data` (JSONB) → tidak ada field yang bisa hilang (termasuk inspectionResult + foto). Reads di
+   App.jsx tetap lewat state.units yang di-load dari tabel ini. ===== */
+const UNIT_TABLE = "units";
+storage.unitList = async () => {
+  try {
+    const { data, error } = await supabase.from(UNIT_TABLE).select("data,created_at").order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data || []).map((r) => r.data).filter(Boolean);
+  } catch (e) { console.error("unitList error:", e); return null; } // null = GAGAL (beda dari [] kosong)
+};
+storage.unitSave = async (unit) => {
+  try {
+    if (!unit || !unit.id) return { ok: false, error: "unit tanpa id" };
+    const { error } = await supabase.from(UNIT_TABLE).upsert({ id: unit.id, data: unit, status: unit.status || null, updated_at: Date.now() }, { onConflict: "id" });
+    if (error) throw error;
+    return { ok: true };
+  } catch (e) { console.error("unitSave error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.unitDelete = async (id) => {
+  try { const { error } = await supabase.from(UNIT_TABLE).delete().eq("id", id); if (error) throw error; return { ok: true }; }
+  catch (e) { console.error("unitDelete error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+// Migrasi sekali dari blob kv ke tabel (upsert by id = idempotent, aman diulang, tidak menimpa
+// perubahan lebih baru karena cuma dijalankan saat _unitMigrated masih false).
+storage.unitMigrate = async (units) => {
+  try {
+    const rows = (units || []).filter((u) => u && u.id).map((u) => ({ id: u.id, data: u, status: u.status || null, updated_at: Date.now() }));
+    if (!rows.length) return { ok: true, migrated: 0 };
+    const { error } = await supabase.from(UNIT_TABLE).upsert(rows, { onConflict: "id" });
+    if (error) throw error;
+    return { ok: true, migrated: rows.length };
+  } catch (e) { console.error("unitMigrate error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.unitSubscribe = (cb) => {
+  const channel = supabase.channel("units-stream")
+    .on("postgres_changes", { event: "*", schema: "public", table: UNIT_TABLE }, () => cb())
+    .subscribe();
+  return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+};
+
 /* ===== HANDBOOK: file PDF disimpan di Supabase Storage (bucket "handbook") =====
    File selalu bernama tetap "handbook.pdf" supaya gampang di-replace & URL stabil.
    Metadata kecil (tanggal update) disimpan di kv "motorell-handbook-meta". */

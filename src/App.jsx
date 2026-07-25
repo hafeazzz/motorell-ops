@@ -195,6 +195,11 @@ const seed = () => ({
 });
 
 /* ============ Storage ============ */
+// Default field unit — dipakai normalize() DAN saat load unit dari tabel `units`, supaya unit lama
+// yang belum punya field tertentu tetap terisi. `...u` di akhir menjaga SEMUA field asli (termasuk
+// inspectionResult & foto) — tidak ada yang hilang.
+const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
+
 function normalize(s) {
   const arr = (x, d) => (Array.isArray(x) ? x : d);
   const out = {
@@ -211,11 +216,12 @@ function normalize(s) {
     inspections: arr(s.inspections, []),
   };
   out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
-  out.units = out.units.map((u) => ({ investorCode: "", investorShare: 0, soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u }));
+  out.units = out.units.map(withUnitDefaults);
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
   out._attMigrated = s._attMigrated === true; // absen sudah dipindah ke tabel `attendance`?
   out._taskMigrated = s._taskMigrated === true; // task sudah dipindah ke tabel `tasks`?
+  out._unitMigrated = s._unitMigrated === true; // unit sudah dipindah ke tabel `units`?
   return out;
 }
 async function loadState() {
@@ -247,6 +253,18 @@ async function loadState() {
       }
       const tsk = await window.storage.taskList();
       if (tsk) base.tasks = tsk; // null = fetch gagal → pakai data blob apa adanya
+    }
+  } catch (e) {}
+  // Unit motor juga punya tabel sendiri (`units`) supaya tidak ketimpa. Blob kv DIBIARKAN utuh
+  // sebagai cadangan; tabel jadi sumber kebenaran. Kalau fetch gagal (null) → pakai data blob.
+  try {
+    if (window.storage.unitList) {
+      if (!base._unitMigrated && (base.units || []).length && window.storage.unitMigrate) {
+        const m = await window.storage.unitMigrate(base.units);
+        if (m && m.ok) { base._unitMigrated = true; try { await window.storage.set(STORE_KEY, JSON.stringify(base), true); } catch (e) {} }
+      }
+      const un = await window.storage.unitList();
+      if (un) base.units = un.map(withUnitDefaults);
     }
   } catch (e) {}
   return base;
@@ -579,6 +597,13 @@ function MotorellOps() {
     const unsub = window.storage.taskSubscribe(reload);
     return unsub;
   }, []);
+  // Unit motor juga: tabel & realtime sendiri → tambah/edit/status/hapus unit langsung sinkron.
+  useEffect(() => {
+    if (!window.storage || !window.storage.unitSubscribe) return;
+    const reload = async () => { try { const u = await window.storage.unitList(); if (u) setState((s) => (s ? { ...s, units: u.map(withUnitDefaults) } : s)); } catch (e) {} };
+    const unsub = window.storage.unitSubscribe(reload);
+    return unsub;
+  }, []);
   const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
   useEffect(() => {
@@ -622,6 +647,19 @@ function MotorellOps() {
     edit: async (id, title) => { await window.storage.taskEdit(id, title); await reloadTasks(); },
     del: async (id) => { await window.storage.taskDelete(id); await reloadTasks(); },
     delByUser: async (userId) => { await window.storage.taskDeleteByUser(userId); await reloadTasks(); },
+  };
+  // Operasi unit lewat tabel `units` (row-level, tidak menimpa blob). Update lokal optimistik lalu
+  // simpan baris unit itu saja. Expense/inspeksi terkait tetap di blob via update() biasa.
+  const unitOps = {
+    add: async (unit) => { setState((s) => (s ? { ...s, units: [...s.units, unit] } : s)); await window.storage.unitSave(unit); },
+    update: async (unitId, mutator) => {
+      const cur = stateRef.current && stateRef.current.units.find((u) => u.id === unitId);
+      if (!cur) return;
+      const next = mutator(structuredClone(cur)) || structuredClone(cur);
+      setState((s) => (s ? { ...s, units: s.units.map((u) => (u.id === unitId ? next : u)) } : s));
+      await window.storage.unitSave(next);
+    },
+    remove: async (unitId) => { setState((s) => (s ? { ...s, units: s.units.filter((u) => u.id !== unitId) } : s)); await window.storage.unitDelete(unitId); },
   };
 
   return (
@@ -848,12 +886,12 @@ button:active{transform:scale(.97)}
         <div key={tab} className={dir >= 0 ? "an-r" : "an-l"}>
           {tab === "home" && <HomeTab state={state} me={me} isOwner={isMgr} go={goTab} onInspeksi={() => setInspeksiOpen(true)} />}
           {tab === "absen" && <AbsenTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} reloadAttendance={reloadAttendance} />}
-          {tab === "uang" && <UangTab state={state} me={me} update={update} onInspeksi={() => setInspeksiOpen(true)} focusUnit={focusUnit} onFocusConsumed={() => setFocusUnit(null)} />}
+          {tab === "uang" && <UangTab state={state} me={me} update={update} unitOps={unitOps} onInspeksi={() => setInspeksiOpen(true)} focusUnit={focusUnit} onFocusConsumed={() => setFocusUnit(null)} />}
           {tab === "media" && <MediaTab state={state} me={me} isOwner={isOwner} isMgr={isMgr} update={update} />}
           {tab === "task" && (isMgr ? <OwnerTaskTab state={state} update={update} taskOps={taskOps} /> : <TaskTab state={state} me={me} update={update} taskOps={taskOps} />)}
           {tab === "tim" && <TimTab state={state} update={update} isOwner={isOwner} taskOps={taskOps} />}
           {tab === "laporan" && <LaporanTab state={state} />}
-          {tab === "arsip" && <ArsipTab state={state} me={me} update={update} />}
+          {tab === "arsip" && <ArsipTab state={state} me={me} update={update} unitOps={unitOps} />}
         </div>
       </main>
 
@@ -886,7 +924,7 @@ button:active{transform:scale(.97)}
       <HandbookErrorBoundary onClose={() => setHandbookOpen(false)}>
         <HandbookPage open={handbookOpen} onClose={() => setHandbookOpen(false)} isMgr={isMgr} />
       </HandbookErrorBoundary>
-      <InspeksiPage open={inspeksiOpen} onClose={() => setInspeksiOpen(false)} me={me} update={update} state={state} onOpenUnit={(id) => { setInspeksiOpen(false); goTab("uang"); setFocusUnit(id); }} />
+      <InspeksiPage open={inspeksiOpen} onClose={() => setInspeksiOpen(false)} me={me} update={update} unitOps={unitOps} state={state} onOpenUnit={(id) => { setInspeksiOpen(false); goTab("uang"); setFocusUnit(id); }} />
       <FunFX />
       {welcome && <WelcomeOverlay user={welcome} onDone={() => setWelcome(null)} />}
 
@@ -1438,7 +1476,7 @@ function LiveProof({ live, userName, setZoom }) {
 }
 
 /* ============ Keuangan ============ */
-function UangTab({ state, me, update, onInspeksi, focusUnit, onFocusConsumed }) {
+function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusConsumed }) {
   const isMgr = me.role === "owner" || me.role === "admin";
   const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
   useEffect(() => { if (focusUnit) { setDetail(focusUnit); onFocusConsumed && onFocusConsumed(); } }, [focusUnit]);
@@ -1446,7 +1484,7 @@ function UangTab({ state, me, update, onInspeksi, focusUnit, onFocusConsumed }) 
   const [zoomU, setZoomU] = useState("");
   const photoFileRef = useRef(null); const photoForRef = useRef(null);
   const pickPhotoFor = (id) => { photoForRef.current = id; if (photoFileRef.current) photoFileRef.current.click(); };
-  const onCardPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const id = photoForRef.current; photoForRef.current = null; if (!f || !id) return; const data = await compress(f, 800, 0.5); if (data) update((s) => { const un = s.units.find((x) => x.id === id); if (un) un.photo = data; return s; }); };
+  const onCardPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const id = photoForRef.current; photoForRef.current = null; if (!f || !id) return; const data = await compress(f, 800, 0.5); if (data) unitOps.update(id, (u) => { u.photo = data; return u; }); };
   const visible = state.units.filter((u) => u.status !== "terjual" || !u.soldAt || inMonth(u.soldAt, month()));
   const archived = state.units.filter((u) => u.status === "terjual" && u.soldAt && !inMonth(u.soldAt, month())).length;
   // Filter "Terjual" menampilkan SEMUA unit terjual (termasuk bulan lalu yang biasanya sudah pindah
@@ -1494,8 +1532,8 @@ function UangTab({ state, me, update, onInspeksi, focusUnit, onFocusConsumed }) 
         );
       })}</div>
       {isMgr && <ProfitEstimate state={state} />}
-      <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} me={me} />
-      <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
+      <AddUnitModal open={openUnit} onClose={() => setOpenUnit(false)} update={update} unitOps={unitOps} me={me} />
+      <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} unitOps={unitOps} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
       <input ref={photoFileRef} type="file" accept="image/*" className="hidden" onChange={onCardPhoto} />
       <Lightbox src={zoomU} onClose={() => setZoomU("")} />
@@ -1549,21 +1587,21 @@ function DateBox({ label, value, onChange }) {
 }
 // Buat unit motor baru + otomatis expense "Cek unit" Rp250.000 (kategori jasa) — Tugas 1.
 // Dipakai semua jalur pembuatan unit (form manual & alur Inspeksi) supaya konsisten.
-function createUnit(s, data, byId, presetId) {
-  const id = presetId || uid();
-  s.units.push({
-    id, name: data.name || "Motor baru", plate: data.plate || "",
+// Bangun objek unit (murni, tanpa efek samping). Unit disimpan ke tabel `units` via unitOps.add;
+// pengeluaran default "Cek unit" tetap di blob (expenses) via update() biasa.
+function buildUnit(data, presetId) {
+  return {
+    id: presetId || uid(), name: data.name || "Motor baru", plate: data.plate || "",
     buyPrice: +data.buyPrice || 0, sellPrice: +data.sellPrice || 0,
     status: data.status || "proses", investorCode: (data.investorCode || "").trim(),
     inDate: data.inDate || today(), soldAt: null, odometer: +data.odometer || 0,
     ...(data.inspectionResult ? { inspectionResult: data.inspectionResult } : {}),
-  });
-  s.expenses.push({ id: uid(), unitId: id, cat: "jasa", amount: 250000, note: "Cek unit", by: byId || null, date: today() });
-  return id;
+  };
 }
-function AddUnitModal({ open, onClose, update, me }) {
+const defaultUnitExpense = (unitId, byId) => ({ id: uid(), unitId, cat: "jasa", amount: 250000, note: "Cek unit", by: byId || null, date: today() });
+function AddUnitModal({ open, onClose, update, unitOps, me }) {
   const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" });
-  const save = () => { if (!f.name) return; update((s) => { createUnit(s, f, me && me.id); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" }); onClose(); };
+  const save = () => { if (!f.name) return; const u = buildUnit(f); unitOps.add(u); update((s) => { s.expenses.push(defaultUnitExpense(u.id, me && me.id)); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" }); onClose(); };
   return (
     <Modal open={open} onClose={onClose} title="Tambah unit motor">
       <Field label="Nama / tipe motor"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Honda Beat 2019" /></Field>
@@ -1630,7 +1668,7 @@ function ProfitBreakdown({ state, unit }) {
   );
 }
 
-function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, update }) {
+function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, update, unitOps }) {
   const unit = state.units.find((u) => u.id === unitId); if (!unit) return null;
   const isMgr = me && (me.role === "owner" || me.role === "admin");
   const items = state.expenses.filter((e) => e.unitId === unitId);
@@ -1639,20 +1677,20 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
   const [confirmDel, setConfirmDel] = useState(false);
   const [zoom, setZoom] = useState("");
   useEffect(() => { setConfirmDel(false); }, [unitId]);
-  const setField = (k, v) => update((s) => { s.units.find((u) => u.id === unitId)[k] = v; return s; });
+  // Edit unit → tabel `units` (row-level, anti-tabrakan). Expense unit tetap di blob.
+  const setField = (k, v) => unitOps.update(unitId, (u) => { u[k] = v; return u; });
   const setStatus = (status) => {
     const wasSold = unit.status === "terjual";
-    update((s) => {
-      const u = s.units.find((x) => x.id === unitId);
+    unitOps.update(unitId, (u) => {
       u.status = status;
       if (status === "terjual") { if (!u.soldAt) u.soldAt = today(); }
       else { u.soldAt = null; }
-      return s;
+      return u;
     });
     if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
   };
   const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
-  const delUnit = () => { update((s) => { s.units = s.units.filter((u) => u.id !== unitId); s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
+  const delUnit = () => { unitOps.remove(unitId); update((s) => { s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
   const photoRef = useRef(null);
   const onPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 800, 0.5); if (data) setField("photo", data); };
   return (
@@ -2034,7 +2072,7 @@ function LaporanTab({ state }) {
 }
 
 /* ============ Arsip (motor terjual, riwayat inspeksi, absen harian) ============ */
-function ArsipTab({ state, me, update }) {
+function ArsipTab({ state, me, update, unitOps }) {
   const isMgr = me.role === "owner" || me.role === "admin";
   const [sub, setSub] = useState("terjual");
   const [detail, setDetail] = useState(null);
@@ -2104,7 +2142,7 @@ function ArsipTab({ state, me, update }) {
         </div>
       )}
       {isMgr && sub === "absen" && <ArsipAbsenView state={state} ym={ymAbsen} setYm={setYmAbsen} />}
-      <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
+      <UnitDetailModal unitId={detail} state={state} me={me} onClose={() => setDetail(null)} update={update} unitOps={unitOps} onAddExp={(id) => setExpModal({ mode: "add", unitId: id })} onEditExp={(e) => setExpModal({ mode: "edit", unitId: e.unitId, expense: e })} />
       <ExpenseModal data={expModal} units={state.units} me={me} onClose={() => setExpModal(null)} update={update} />
       <InspectionDetailModal inspection={openInspection} state={state} me={me} update={update} onClose={() => setOpenInspection(null)} />
     </div>
@@ -2828,7 +2866,7 @@ const INSPEKSI_SECTIONS = [
 const INS_STATUS = [{ k: "baik", l: "Baik", c: "#10b981" }, { k: "perhatian", l: "Perlu perhatian", c: "#eab308" }, { k: "masalah", l: "Bermasalah", c: "#ef4444" }];
 const INS_TOTAL = INSPEKSI_SECTIONS.reduce((a, s) => a + s.items.length, 0);
 
-function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
+function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit }) {
   const [name, setName] = useState("");
   const [items, setItems] = useState({});
   const [notes, setNotes] = useState("");
@@ -2900,7 +2938,9 @@ function InspeksiPage({ open, onClose, me, update, state, onOpenUnit }) {
       return;
     }
     const newId = uid(); // dibuat di luar updater supaya tak balapan dengan setState async
-    update((s) => { createUnit(s, { name: name.trim() || "Motor (inspeksi)", inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, me.id, newId); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; });
+    const u = buildUnit({ name: name.trim() || "Motor (inspeksi)", inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, newId);
+    unitOps.add(u); // unit → tabel `units`
+    update((s) => { s.expenses.push(defaultUnitExpense(newId, me.id)); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; }); // expense + inspeksi → blob
     setSaving(false); reset(); onClose();
     if (onOpenUnit) onOpenUnit(newId);
   };
