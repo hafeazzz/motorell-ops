@@ -2916,7 +2916,22 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
   const [saving, setSaving] = useState(false);
   const photoRef = useRef(null); const photoForRef = useRef(null);
   const notePhotoRef = useRef(null);
-  const reset = () => { setName(""); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); };
+  // Draft LOKAL penuh (di HP ini) supaya inspeksi tidak hilang kalau iOS menutup tab paksa (memori
+  // tab dibersihkan / di-background). Beda dari draft monitoring bersama yang ramping — ini simpan
+  // SEMUA item + foto, dipulihkan saat halaman dibuka lagi, dihapus setelah inspeksi diputuskan.
+  const DRAFT_KEY = "motorell-inspeksi-draft-" + me.id;
+  const clearLocalDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} };
+  const saveLocalDraft = (payload) => {
+    // Kalau storage penuh (QuotaExceededError, umum di iOS), turunkan bertahap: buang foto per-item
+    // dulu, lalu semua foto — checklist & catatan (paling capek diulang) diprioritaskan tetap ada.
+    const stripItemPhotos = (its) => { const o = {}; for (const k of Object.keys(its || {})) { const { photo, ...rest } = its[k] || {}; o[k] = rest; } return o; };
+    const variants = [payload, { ...payload, items: stripItemPhotos(payload.items) }, { ...payload, items: stripItemPhotos(payload.items), notePhotos: [] }];
+    for (const v of variants) {
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...v, savedAt: Date.now() })); return; }
+      catch (e) { if (!e || e.name !== "QuotaExceededError") { console.error("saveLocalDraft:", e); return; } }
+    }
+  };
+  const reset = () => { setName(""); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); clearLocalDraft(); };
   // ts = kapan item ini terakhir di-set — dipakai monitoring live & tampilan detail arsip.
   const setStatus = (key, st) => setItems((p) => {
     const cur = p[key] || {};
@@ -2939,6 +2954,17 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
   useEffect(() => {
     if (!open) return;
     startedAtRef.current = Date.now();
+    // Pulihkan draft lokal kalau ada (mis. sesi sebelumnya ditutup paksa iOS sebelum sempat disimpan).
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw);
+        const hasContent = d && (d.name || (d.items && Object.keys(d.items).length) || d.notes || (d.notePhotos && d.notePhotos.length));
+        if (hasContent && window.confirm("Ada inspeksi yang belum selesai tersimpan di HP ini. Lanjutkan dari sana?")) {
+          setName(d.name || ""); setItems(d.items || {}); setNotes(d.notes || ""); setNotePhotos(d.notePhotos || []);
+        } else { clearLocalDraft(); }
+      }
+    } catch (e) {}
     const iv = setInterval(() => setBeat((b) => b + 1), 60000);
     return () => { clearInterval(iv); clearDraft(me.id); };
   }, [open]);
@@ -2965,6 +2991,8 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
         photos: notePhotos,
         startedAt: startedAtRef.current || Date.now(),
       });
+      // Draft LOKAL penuh (dengan foto per-item) — inilah yang menyelamatkan data kalau tab mati.
+      if (name.trim() || Object.keys(items).length || notes.trim() || notePhotos.length) saveLocalDraft({ name: name.trim(), items, notes: notes.trim(), notePhotos });
     }, 1500);
     return () => clearTimeout(t);
   }, [open, name, notes, notePhotos, items, totalChecked, beat, me.id, me.name]);
