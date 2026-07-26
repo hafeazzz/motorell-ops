@@ -1487,10 +1487,10 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
   const onCardPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const id = photoForRef.current; photoForRef.current = null; if (!f || !id) return; const data = await compress(f, 800, 0.5); if (data) unitOps.update(id, (u) => { u.photo = data; return u; }); };
   const visible = state.units.filter((u) => u.status !== "terjual" || !u.soldAt || inMonth(u.soldAt, month()));
   const archived = state.units.filter((u) => u.status === "terjual" && u.soldAt && !inMonth(u.soldAt, month())).length;
-  // Filter "Terjual" menampilkan SEMUA unit terjual (termasuk bulan lalu yang biasanya sudah pindah
-  // ke Arsip) — biar tidak membingungkan. Filter lain tetap dari `visible` (terjual bulan lalu
-  // disembunyikan supaya daftar Keuangan ringkas; rekap lengkapnya di Arsip/Laporan).
-  const filtered = (fs === "terjual" ? state.units : visible).filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
+  // Keuangan fokus BULAN INI: filter "Terjual" hanya menampilkan yang terjual bulan ini (pakai
+  // `visible` yang sudah menyembunyikan terjual bulan lalu). Riwayat lengkap + grouping per bulan
+  // ada di tab Arsip.
+  const filtered = visible.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
   const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "terjual", l: "Terjual" }];
   return (
     <div className="space-y-3 pt-3">
@@ -1502,7 +1502,7 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">{FILTERS.map((ff) => <button key={ff.k} onClick={() => setFs(ff.k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${fs === ff.k ? "ac-bg" : "s-soft s-muted"}`}>{ff.l}</button>)}</div>
         </div>
       )}
-      {archived > 0 && fs !== "terjual" && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="ac-text" />{archived} motor terjual bulan lalu diarsipkan — pilih filter <b className="s-text">Terjual</b> atau buka <b className="s-text">Arsip</b> buat lihat.</p>}
+      {archived > 0 && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="ac-text" />{archived} motor terjual bulan lalu ada di tab <b className="s-text">Arsip</b> (dikelompokkan per bulan).</p>}
       {state.units.length > 0 && filtered.length === 0 && <p className="text-center text-sm s-muted py-6">Nggak ada motor yang cocok.</p>}
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{filtered.map((u) => {
         const exp = expByUnit(state, u.id); const modal = u.buyPrice + exp; const profit = u.sellPrice ? u.sellPrice - modal : null;
@@ -2102,9 +2102,17 @@ function ArsipTab({ state, me, update, unitOps }) {
   const [inspShow, setInspShow] = useState(20);
   const [ymAbsen, setYmAbsen] = useState(month());
   const sold = [...state.units].filter((u) => u.status === "terjual").sort((a, b) => (b.soldAt || "").localeCompare(a.soldAt || ""));
-  // Rekap per bulan untuk header grup di daftar "Motor Terjual" (jumlah + omzet + profit).
+  // Rekap per bulan untuk header grup di daftar "Motor Terjual": jumlah, modal, omzet, profit,
+  // dan total balik modal investor (modal + jatah profit, hanya unit ber-investor).
   const soldMonthAgg = {};
-  for (const u of sold) { const mk = (u.soldAt || "").slice(0, 7) || "—"; const g = soldMonthAgg[mk] || { count: 0, revenue: 0, profit: 0 }; g.count++; g.revenue += u.sellPrice || 0; g.profit += (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id); soldMonthAgg[mk] = g; }
+  for (const u of sold) {
+    const mk = (u.soldAt || "").slice(0, 7) || "—";
+    const g = soldMonthAgg[mk] || { count: 0, modal: 0, revenue: 0, profit: 0, invPayback: 0 };
+    const modal = u.buyPrice + expByUnit(state, u.id); const p = unitProfit(state, u);
+    g.count++; g.modal += modal; g.revenue += u.sellPrice || 0; g.profit += (u.sellPrice || 0) - modal;
+    if (u.investorCode && p && p.share > 0) g.invPayback += modal + p.investorCut;
+    soldMonthAgg[mk] = g;
+  }
   const inspected = state.inspections || [];
   const dateLabel = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-";
   return (
@@ -2120,13 +2128,13 @@ function ArsipTab({ state, me, update, unitOps }) {
           {sold.length === 0 && <p className="text-center text-sm s-muted py-8">Belum ada motor terjual.</p>}
           {(() => { let lastMk = null; return sold.slice(0, soldShow).map((u) => {
             const profit = (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id);
-            const mk = (u.soldAt || "").slice(0, 7) || "—"; const showHeader = mk !== lastMk; lastMk = mk; const agg = soldMonthAgg[mk] || { count: 0, revenue: 0, profit: 0 };
+            const mk = (u.soldAt || "").slice(0, 7) || "—"; const showHeader = mk !== lastMk; lastMk = mk; const agg = soldMonthAgg[mk] || { count: 0, modal: 0, revenue: 0, profit: 0, invPayback: 0 };
             return (
               <React.Fragment key={u.id}>
               {showHeader && (
-                <div className="flex items-center justify-between gap-2 px-1 pt-2 pb-0.5">
-                  <p className="text-xs font-bold s-muted shrink-0">{mk === "—" ? "Tanpa tanggal" : monthLabel(mk)} · {agg.count} motor</p>
-                  {isMgr && <p className="text-[10px] s-muted text-right truncate">Omzet {rp(agg.revenue)} · Profit <span className={agg.profit >= 0 ? "text-emerald-500" : "text-rose-500"}>{rp(agg.profit)}</span></p>}
+                <div className="px-1 pt-2.5 pb-0.5">
+                  <p className="text-xs font-bold s-muted flex items-center gap-1.5">{mk === "—" ? "Tanpa tanggal" : monthLabel(mk)} · {agg.count} motor{mk === month() && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500 text-white">Bulan ini</span>}</p>
+                  {isMgr && <p className="text-[10px] s-muted mt-0.5 leading-relaxed">Modal {rp(agg.modal)} · Omzet {rp(agg.revenue)} · Profit <span className={agg.profit >= 0 ? "text-emerald-500" : "text-rose-500"}>{rp(agg.profit)}</span>{agg.invPayback > 0 && <> · Balik modal investor <span className="ac-text">{rp(agg.invPayback)}</span></>}</p>}
                 </div>
               )}
               <Card className="p-3">
