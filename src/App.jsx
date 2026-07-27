@@ -168,6 +168,17 @@ const CATS = {
 const MEDIA_CATS = ["ADS", "TESTIMONI", "LONG YOUTUBE", "CLIPPER", "AUTOMATION"];
 const MCAT_COLOR = { "ADS": "amber", "TESTIMONI": "emerald", "LONG YOUTUBE": "rose", "CLIPPER": "blue", "AUTOMATION": "purple" };
 const PAL = ["#f97316", "#3b82f6", "#10b981", "#a855f7", "#eab308", "#ef4444", "#14b8a6"];
+// Gradasi putih → hijau muda (#10B981) → hijau tua (#065F46) untuk slice donut, diinterpolasi
+// dinamis sesuai jumlah kategori (indeks i dari n kategori).
+const greenShade = (i, n) => {
+  const stops = [[255, 255, 255], [16, 185, 129], [6, 95, 70]]; // putih, emerald-500, emerald-800
+  if (n <= 1) return "rgb(16,185,129)";
+  const t = i / (n - 1); // 0..1
+  const seg = t <= 0.5 ? 0 : 1; const lt = t <= 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
+  const a = stops[seg], b = stops[seg + 1];
+  const c = a.map((av, k) => Math.round(av + (b[k] - av) * lt));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+};
 const STORE_KEY = "motorell-state-v3";
 const THEME_KEY = "motorell-theme";
 // Ingat siapa yang login di perangkat ini. `me` cuma state React, jadi tanpa ini SEMUA reload
@@ -1981,6 +1992,10 @@ function LaporanTab({ state }) {
   const r = monthlyReport(state, ym);
   const top = r.groups[0];
   const donut = r.groups.map((g) => ({ name: g.name, value: g.count }));
+  // Persentase per motor berdasarkan kontribusi PROFIT BERSIH (net) ke total net semua motor.
+  // Kalau total net tidak positif (bulan rugi), jatuh balik ke persentase jumlah unit.
+  const totalNet = r.groups.reduce((a, g) => a + (g.net || 0), 0);
+  const netPct = (g) => (totalNet > 0 ? Math.round(((g.net || 0) / totalNet) * 100) : Math.round((g.count / r.total) * 100));
   const isCurrent = ym >= month();
   const exportExcel = async () => {
     let X;
@@ -2037,11 +2052,11 @@ function LaporanTab({ state }) {
           <>
             <div className="relative" style={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart><Pie data={donut} dataKey="value" nameKey="name" innerRadius={58} outerRadius={82} paddingAngle={donut.length > 1 ? 3 : 0} stroke="none">{donut.map((d, i) => <Cell key={i} fill={PAL[i % PAL.length]} />)}</Pie></PieChart>
+                <PieChart><Pie data={donut} dataKey="value" nameKey="name" innerRadius={58} outerRadius={82} paddingAngle={donut.length > 1 ? 3 : 0} stroke="none">{donut.map((d, i) => <Cell key={i} fill={greenShade(i, donut.length)} />)}</Pie></PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 grid place-items-center pointer-events-none"><div className="text-center"><p className="text-3xl font-extrabold leading-none">{r.total}</p><p className="text-[11px] s-muted">unit terjual</p></div></div>
             </div>
-            <div className="space-y-1.5 mt-2">{r.groups.map((g, i) => <div key={g.name} className="flex items-center justify-between text-sm"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ background: PAL[i % PAL.length] }} /><span className="font-medium">{g.name}</span></div><span className="s-muted text-xs">{g.count} unit · {Math.round(g.count / r.total * 100)}%</span></div>)}</div>
+            <div className="space-y-1.5 mt-2">{r.groups.map((g, i) => <div key={g.name} className="flex items-center justify-between text-sm gap-2"><div className="flex items-center gap-2 min-w-0"><span className="w-3 h-3 rounded-full shrink-0" style={{ background: greenShade(i, r.groups.length) }} /><span className="font-medium truncate">{g.name}</span></div><span className="s-muted text-xs shrink-0">{g.count} unit · {netPct(g)}% profit</span></div>)}</div>
           </>
         )}
       </Card>
