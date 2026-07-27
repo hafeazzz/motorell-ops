@@ -618,7 +618,7 @@ function MotorellOps() {
   const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
   useEffect(() => {
-    const c = dark ? "#070b14" : "#0f172a";
+    const c = dark ? "#050810" : "#0f172a";
     try { document.documentElement.style.background = c; document.body.style.background = c; } catch (e) {}
     try { let m = document.querySelector('meta[name="theme-color"]'); if (!m) { m = document.createElement("meta"); m.name = "theme-color"; document.head.appendChild(m); } m.setAttribute("content", c); } catch (e) {}
   }, [dark]);
@@ -677,7 +677,7 @@ function MotorellOps() {
     <div onClick={clickSound} className={`mr-app mr-shell ${dark ? "dark" : ""} s-bg s-text font-sans max-w-md md:max-w-3xl lg:max-w-none mx-auto lg:px-8 xl:px-16 relative`}>
       <style>{`
 .mr-app{--bg:#edf0f5;--surface:#ffffff;--soft:#eef1f6;--border:#e5e9f0;--text:#0f172a;--muted:#64748b;--header:#0f172a;--accent:#1e293b;--accent-contrast:#ffffff}
-.mr-app.dark{--bg:#08090c;--surface:#0d0e13;--soft:#15171e;--border:#24262e;--text:#f0f2f7;--muted:#9aa0ad;--header:#040405;--accent:#f5f7fa;--accent-contrast:#0b0c10}
+.mr-app.dark{--bg:#050810;--surface:#08080a;--soft:#111114;--border:#1f1f1f;--text:#f0f2f7;--muted:#9aa0ad;--header:#020203;--accent:#f5f7fa;--accent-contrast:#0b0c10}
 .ac-text{color:var(--accent)}
 .ac-bg{background:var(--accent);color:var(--accent-contrast)}
 .ac-border{border-color:var(--accent)}
@@ -693,8 +693,8 @@ function MotorellOps() {
 .mr-header::after{content:"";position:absolute;left:-14%;bottom:-75%;width:58%;height:180%;background:radial-gradient(closest-side,rgba(255,255,255,.06),transparent 72%);pointer-events:none}
 .mr-header>*{position:relative;z-index:1}
 /* ===== BLACK GRANITE (dark) — hitam elegan berkedalaman + grain + kaca ===== */
-.mr-app.dark.s-bg,.mr-app.dark .s-bg{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.2'/%3E%3C/svg%3E"),radial-gradient(125% 85% at 50% -12%,#16181f 0%,#0b0c11 44%,#070709 100%)}
-.mr-app.dark .s-surface{background-color:rgba(15,16,22,.66);background-image:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,0) 44%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 18px 42px -22px rgba(0,0,0,.92)}
+.mr-app.dark.s-bg,.mr-app.dark .s-bg{background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.2'/%3E%3C/svg%3E"),radial-gradient(125% 85% at 50% -12%,#0d0d10 0%,#060608 46%,#030304 100%)}
+.mr-app.dark .s-surface{background-color:rgba(6,6,8,.72);background-image:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0) 44%);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 18px 42px -22px rgba(0,0,0,.95)}
 .mr-app.dark .mr-header{box-shadow:0 18px 46px -22px rgba(0,0,0,.9),inset 0 -1px 0 rgba(255,255,255,.06)}
 .mr-navon svg{filter:drop-shadow(0 0 9px rgba(255,255,255,.6))!important}
 /* ===== LIGHT — pearl elegan + kaca lembut ===== */
