@@ -2355,21 +2355,22 @@ const clampInt = (v, lo, hi) => { const n = parseInt(v, 10); if (isNaN(n)) retur
 
 /* Satu halaman di viewer continuous. Render canvas HANYA saat shouldRender (dekat viewport),
    dan lepaskan (canvas 0×0) saat jauh → hemat memori meski dokumen 123 halaman. */
-function HbPage({ pdf, num, cssWidth, renderCap, baseRatio, shouldRender }) {
-  // Lebar bitmap canvas dibatasi `renderCap` (kotak layout tetap `cssWidth` → scroll benar).
-  // Di atas batas, canvas beresolusi lebih rendah diregangkan via CSS (width:100%) — sedikit buram
-  // di zoom ekstrem, TAPI mencegah canvas raksasa yang bikin tab iOS kehabisan memori & reload.
-  const effW = renderCap ? Math.min(cssWidth, renderCap) : cssWidth;
+function HbPage({ pdf, num, boxW, renderW, baseRatio, shouldRender }) {
+  // boxW = ukuran LAYOUT halaman (ikut zoom → scroll/pan benar). renderW = lebar bitmap canvas
+  // (dibatasi & di-debounce di induk). Zoom TIDAK pakai CSS transform pada container besar — di
+  // iOS itu meraster satu layer raksasa (setinggi seluruh dokumen × skala) dan bikin tab crash.
+  // Canvas beresolusi renderW diregangkan ke boxW via CSS (width:100%): sedikit buram di zoom
+  // ekstrem, tapi memori tetap terbatas & tidak ada layer raksasa.
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
   const doneRef = useRef(0); // lebar css yang terakhir dirender (0 = belum)
   const [ratio, setRatio] = useState(baseRatio);
   useEffect(() => {
-    if (!shouldRender || !pdf || !cssWidth) {
+    if (!shouldRender || !pdf || !renderW) {
       if (!shouldRender) { const c = canvasRef.current; if (c) { c.width = 0; c.height = 0; } doneRef.current = 0; }
       return;
     }
-    if (doneRef.current === effW) return; // sudah dirender pada resolusi ini
+    if (doneRef.current === renderW) return; // sudah dirender pada resolusi ini
     let cancelled = false;
     (async () => {
       try {
@@ -2380,20 +2381,20 @@ function HbPage({ pdf, num, cssWidth, renderCap, baseRatio, shouldRender }) {
         if (Math.abs(r - ratio) > 0.001) setRatio(r);
         const canvas = canvasRef.current; if (!canvas) return;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const vp = p.getViewport({ scale: (effW / vp1.width) * dpr }); // effW dibatasi → canvas tidak raksasa
+        const vp = p.getViewport({ scale: (renderW / vp1.width) * dpr }); // renderW dibatasi → canvas tidak raksasa
         if (taskRef.current) { try { taskRef.current.cancel(); } catch (e) {} }
         canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
         const ctx = canvas.getContext("2d");
         const task = p.render({ canvasContext: ctx, viewport: vp });
         taskRef.current = task;
         await task.promise;
-        doneRef.current = effW;
+        doneRef.current = renderW;
       } catch (e) { if (!(e && e.name === "RenderingCancelledException")) console.error("HbPage render:", e); }
     })();
     return () => { cancelled = true; };
-  }, [shouldRender, effW, num, pdf]);
+  }, [shouldRender, renderW, num, pdf]);
   return (
-    <div data-page={num} style={{ width: cssWidth, height: Math.round(cssWidth * ratio) }} className="mx-auto mb-3 s-surface s-border border rounded-lg shadow-md overflow-hidden relative">
+    <div data-page={num} style={{ width: boxW, height: Math.round(boxW * ratio) }} className="mx-auto mb-3 s-surface s-border border rounded-lg shadow-md overflow-hidden relative">
       <span className="absolute inset-0 grid place-items-center text-xs s-muted pointer-events-none">{num}</span>
       <canvas ref={canvasRef} className="relative" style={{ display: "block", width: "100%", height: "100%" }} />
     </div>
@@ -2433,6 +2434,7 @@ function HandbookPage({ open, onClose, isMgr }) {
   const cancelRef = useRef(false);    // batalkan proses async saat versi berganti
   const scrollRef = useRef(null);
   const pinchRef = useRef(null);
+  const zoomRafRef = useRef(0); const pendingZRef = useRef(null); // throttle pinch → 1 update/frame
   const zoomTimerRef = useRef(null);
   const fileRef = useRef(null);
   const pageRef = useRef(1);          // halaman aktif terkini (hindari stale di handler scroll)
@@ -2611,12 +2613,13 @@ function HandbookPage({ open, onClose, isMgr }) {
     return () => { if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current); };
   }, [zoom]);
 
-  // jaga halaman aktif tetap terlihat saat zoom (render) berubah
+  // jaga halaman aktif tetap terlihat saat UKURAN LAYOUT berubah (zoom). Saat pinch masih aktif
+  // jangan paksa scroll (biar tak melawan jari) — re-center begitu pinch selesai.
   useEffect(() => {
-    if (phase !== "ready") return;
+    if (phase !== "ready" || pinching) return;
     const n = pageRef.current;
     requestAnimationFrame(() => scrollToPage(n, "auto"));
-  }, [renderZoom]);
+  }, [zoom, pinching]);
 
   // simpan posisi halaman terakhir
   useEffect(() => {
@@ -2672,8 +2675,13 @@ function HandbookPage({ open, onClose, isMgr }) {
   // pinch-to-zoom (dua jari); satu jari = scroll biasa (continuous)
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
   const onTouchStart = (e) => { if (e.touches.length === 2) { pinchRef.current = { d: dist(e.touches), z: zoom }; setPinching(true); } };
-  const onTouchMove = (e) => { if (e.touches.length === 2 && pinchRef.current) { const nz = Math.max(0.6, Math.min(4, pinchRef.current.z * (dist(e.touches) / pinchRef.current.d))); setZoom(nz); } };
-  const onTouchEnd = () => { pinchRef.current = null; setPinching(false); };
+  const onTouchMove = (e) => {
+    if (e.touches.length !== 2 || !pinchRef.current) return;
+    // throttle: kumpulkan zoom terbaru, terapkan maksimal sekali per frame (60fps) → reflow tidak menumpuk
+    pendingZRef.current = Math.max(0.6, Math.min(4, pinchRef.current.z * (dist(e.touches) / pinchRef.current.d)));
+    if (!zoomRafRef.current) zoomRafRef.current = requestAnimationFrame(() => { zoomRafRef.current = 0; if (pendingZRef.current != null) setZoom(pendingZRef.current); });
+  };
+  const onTouchEnd = () => { pinchRef.current = null; setPinching(false); if (zoomRafRef.current) { cancelAnimationFrame(zoomRafRef.current); zoomRafRef.current = 0; } if (pendingZRef.current != null) { setZoom(pendingZRef.current); pendingZRef.current = null; } };
 
   const updatedLabel = meta && meta.updatedAt ? new Date(meta.updatedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : null;
 
@@ -2727,18 +2735,11 @@ function HandbookPage({ open, onClose, isMgr }) {
           </div>
         )}
         {phase === "ready" && (
-          <div
-            className="px-3 py-3 mx-auto"
-            style={{
-              width: "max-content",
-              minWidth: "100%",
-              transform: `scale(${zoom / renderZoom})`,
-              transformOrigin: "top center",
-              transition: pinching ? "none" : "transform 300ms cubic-bezier(0.22, 1, 0.36, 1)",
-            }}
-          >
+          // Zoom = perubahan UKURAN LAYOUT (boxW), BUKAN CSS transform pada container besar.
+          // Transform pada elemen setinggi seluruh dokumen = layer raksasa yang bikin iOS crash.
+          <div className="px-3 py-3 mx-auto" style={{ width: "max-content", minWidth: "100%" }}>
             {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
-              <HbPage key={n} pdf={pdfRef.current} num={n} cssWidth={Math.round(viewW * renderZoom)} renderCap={Math.round(viewW * HB_MAX_RENDER_ZOOM)} baseRatio={baseRatio} shouldRender={renderSet.has(n)} />
+              <HbPage key={n} pdf={pdfRef.current} num={n} boxW={Math.round(viewW * zoom)} renderW={Math.min(Math.round(viewW * renderZoom), Math.round(viewW * HB_MAX_RENDER_ZOOM))} baseRatio={baseRatio} shouldRender={renderSet.has(n)} />
             ))}
           </div>
         )}
