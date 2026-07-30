@@ -2355,7 +2355,11 @@ const clampInt = (v, lo, hi) => { const n = parseInt(v, 10); if (isNaN(n)) retur
 
 /* Satu halaman di viewer continuous. Render canvas HANYA saat shouldRender (dekat viewport),
    dan lepaskan (canvas 0×0) saat jauh → hemat memori meski dokumen 123 halaman. */
-function HbPage({ pdf, num, cssWidth, baseRatio, shouldRender }) {
+function HbPage({ pdf, num, cssWidth, renderCap, baseRatio, shouldRender }) {
+  // Lebar bitmap canvas dibatasi `renderCap` (kotak layout tetap `cssWidth` → scroll benar).
+  // Di atas batas, canvas beresolusi lebih rendah diregangkan via CSS (width:100%) — sedikit buram
+  // di zoom ekstrem, TAPI mencegah canvas raksasa yang bikin tab iOS kehabisan memori & reload.
+  const effW = renderCap ? Math.min(cssWidth, renderCap) : cssWidth;
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
   const doneRef = useRef(0); // lebar css yang terakhir dirender (0 = belum)
@@ -2365,7 +2369,7 @@ function HbPage({ pdf, num, cssWidth, baseRatio, shouldRender }) {
       if (!shouldRender) { const c = canvasRef.current; if (c) { c.width = 0; c.height = 0; } doneRef.current = 0; }
       return;
     }
-    if (doneRef.current === cssWidth) return; // sudah dirender pada lebar ini
+    if (doneRef.current === effW) return; // sudah dirender pada resolusi ini
     let cancelled = false;
     (async () => {
       try {
@@ -2376,18 +2380,18 @@ function HbPage({ pdf, num, cssWidth, baseRatio, shouldRender }) {
         if (Math.abs(r - ratio) > 0.001) setRatio(r);
         const canvas = canvasRef.current; if (!canvas) return;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const vp = p.getViewport({ scale: (cssWidth / vp1.width) * dpr });
+        const vp = p.getViewport({ scale: (effW / vp1.width) * dpr }); // effW dibatasi → canvas tidak raksasa
         if (taskRef.current) { try { taskRef.current.cancel(); } catch (e) {} }
         canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
         const ctx = canvas.getContext("2d");
         const task = p.render({ canvasContext: ctx, viewport: vp });
         taskRef.current = task;
         await task.promise;
-        doneRef.current = cssWidth;
+        doneRef.current = effW;
       } catch (e) { if (!(e && e.name === "RenderingCancelledException")) console.error("HbPage render:", e); }
     })();
     return () => { cancelled = true; };
-  }, [shouldRender, cssWidth, num, pdf]);
+  }, [shouldRender, effW, num, pdf]);
   return (
     <div data-page={num} style={{ width: cssWidth, height: Math.round(cssWidth * ratio) }} className="mx-auto mb-3 s-surface s-border border rounded-lg shadow-md overflow-hidden relative">
       <span className="absolute inset-0 grid place-items-center text-xs s-muted pointer-events-none">{num}</span>
@@ -2396,6 +2400,10 @@ function HbPage({ pdf, num, cssWidth, baseRatio, shouldRender }) {
   );
 }
 
+// Batas resolusi render canvas pdf.js. Zoom visual boleh sampai 4×, tapi canvas tidak pernah
+// dirender di atas 2× (sisa pembesaran pakai CSS scale yang murah) — cegah canvas raksasa yang
+// bikin tab iOS kehabisan memori & reload saat di-zoom.
+const HB_MAX_RENDER_ZOOM = 2;
 function HandbookPage({ open, onClose, isMgr }) {
   const [phase, setPhase] = useState("idle"); // idle|loading|ready|error
   const [errMsg, setErrMsg] = useState("");
@@ -2595,7 +2603,8 @@ function HandbookPage({ open, onClose, isMgr }) {
     }
   }, [phase, viewW]);
 
-  // commit zoom → render ulang canvas pdf.js, di-debounce biar pinch/klik cepat tidak trigger render bertubi-tubi
+  // commit zoom → render ulang canvas pdf.js, di-debounce biar pinch/klik cepat tidak trigger render bertubi-tubi.
+  // (renderZoom = layout penuh biar scroll tetap benar; RESOLUSI bitmap canvas dibatasi di HbPage.)
   useEffect(() => {
     if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current);
     zoomTimerRef.current = setTimeout(() => setRenderZoom(zoom), 220);
@@ -2729,7 +2738,7 @@ function HandbookPage({ open, onClose, isMgr }) {
             }}
           >
             {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
-              <HbPage key={n} pdf={pdfRef.current} num={n} cssWidth={Math.round(viewW * renderZoom)} baseRatio={baseRatio} shouldRender={renderSet.has(n)} />
+              <HbPage key={n} pdf={pdfRef.current} num={n} cssWidth={Math.round(viewW * renderZoom)} renderCap={Math.round(viewW * HB_MAX_RENDER_ZOOM)} baseRatio={baseRatio} shouldRender={renderSet.has(n)} />
             ))}
           </div>
         )}
