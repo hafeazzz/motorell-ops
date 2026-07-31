@@ -6,7 +6,7 @@ import {
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
   MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge,
-  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive
+  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive, CalendarDays
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -1520,11 +1520,25 @@ function LiveProof({ live, userName, setZoom }) {
 }
 
 /* ============ Keuangan ============ */
+/* Urutan daftar Keuangan. Tanggal acuannya beda per status: unit terjual dinilai dari tanggal
+   KELUAR (soldAt), sisanya dari tanggal MASUK (inDate) — jadi filter "Semua" pun tetap masuk akal.
+   Format tanggal "YYYY-MM-DD" sudah urut secara leksikografis, jadi cukup dibandingkan sbg string. */
+const sortDateOf = (u) => (u.status === "terjual" ? u.soldAt : u.inDate) || "";
+const tglPendek = (ds) => (ds ? new Date(ds + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "");
+// Menyalin dulu ([...arr]) — Array.sort() mengubah array aslinya, dan `visible` di UangTab berasal
+// dari state.units, jadi sort langsung bakal mengacak urutan state. Unit tanpa tanggal selalu di
+// bawah (di kedua arah) supaya tidak menyamar jadi "paling tua" waktu urut Tertua.
+const sortUnits = (arr, dir) => [...arr].sort((a, b) => {
+  const da = sortDateOf(a), db = sortDateOf(b);
+  if (!da || !db) return da === db ? 0 : da ? -1 : 1;
+  return dir === "asc" ? da.localeCompare(db) : db.localeCompare(da);
+});
 function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusConsumed }) {
   const isMgr = me.role === "owner" || me.role === "admin";
   const [openUnit, setOpenUnit] = useState(false); const [detail, setDetail] = useState(null); const [expModal, setExpModal] = useState(null);
   useEffect(() => { if (focusUnit) { setDetail(focusUnit); onFocusConsumed && onFocusConsumed(); } }, [focusUnit]);
   const [q, setQ] = useState(""); const [fs, setFs] = useState("all");
+  const [sortDir, setSortDir] = useState("desc"); // default: terbaru dulu
   const [zoomU, setZoomU] = useState("");
   const photoFileRef = useRef(null); const photoForRef = useRef(null);
   const pickPhotoFor = (id) => { photoForRef.current = id; if (photoFileRef.current) photoFileRef.current.click(); };
@@ -1534,8 +1548,9 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
   // Keuangan fokus BULAN INI: filter "Terjual" hanya menampilkan yang terjual bulan ini (pakai
   // `visible` yang sudah menyembunyikan terjual bulan lalu). Riwayat lengkap + grouping per bulan
   // ada di tab Arsip.
-  const filtered = visible.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase())));
+  const filtered = sortUnits(visible.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase()))), sortDir);
   const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "terjual", l: "Terjual" }];
+  const sortKeterangan = fs === "terjual" ? "tanggal keluar" : fs === "all" ? "tgl keluar (terjual) / tgl masuk" : "tanggal masuk";
   return (
     <div className="space-y-3 pt-3">
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><div className="flex items-center gap-2"><Btn variant="ghost" onClick={() => onInspeksi && onInspeksi()} className="!px-3 !py-2"><ClipboardCheck size={15} className="inline mr-1 -mt-0.5" />Inspeksi</Btn><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div></div>
@@ -1544,6 +1559,14 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
         <div className="space-y-2">
           <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 s-muted" /><input className={inputCls + " !pl-9"} placeholder="Cari motor / plat…" value={q} onChange={(e) => setQ(e.target.value)} />{q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 s-muted"><X size={15} /></button>}</div>
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">{FILTERS.map((ff) => <button key={ff.k} onClick={() => setFs(ff.k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${fs === ff.k ? "ac-bg" : "s-soft s-muted"}`}>{ff.l}</button>)}</div>
+          {/* Urutan murni tampilan: state lokal, tidak ditulis ke mana pun. */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <CalendarDays size={12} className="s-muted shrink-0" />
+            {[["desc", "Terbaru"], ["asc", "Tertua"]].map(([k, l]) => (
+              <button key={k} onClick={() => setSortDir(k)} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap shrink-0 active:scale-95 transition ${sortDir === k ? "ac-bg" : "s-soft s-muted"}`}>{l}</button>
+            ))}
+            <span className="text-[10px] s-muted">· {sortKeterangan}</span>
+          </div>
         </div>
       )}
       {archived > 0 && <p className="text-[11px] s-muted flex items-center gap-1.5 px-1"><PieIcon size={12} className="ac-text" />{archived} motor terjual bulan lalu ada di tab <b className="s-text">Arsip</b> (dikelompokkan per bulan).</p>}
@@ -1554,7 +1577,7 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
         return (
           <Card key={u.id} className="p-4">
             <div className="flex items-start justify-between" onClick={() => setDetail(u.id)}>
-              <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p><p className="text-[11px] s-muted flex items-center gap-1 mt-0.5"><Gauge size={12} className="shrink-0" />{u.odometer ? `${(+u.odometer).toLocaleString("id-ID")} km` : <span className="italic opacity-70">odometer belum diisi</span>}</p></div>
+              <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p><p className="text-[11px] s-muted flex items-center gap-1 mt-0.5"><Gauge size={12} className="shrink-0" />{u.odometer ? `${(+u.odometer).toLocaleString("id-ID")} km` : <span className="italic opacity-70">odometer belum diisi</span>}</p><p className="text-[11px] s-muted flex items-center gap-1 mt-0.5"><CalendarDays size={12} className="shrink-0" />{sortDateOf(u) ? `${u.status === "terjual" ? "Keluar" : "Masuk"} ${tglPendek(sortDateOf(u))}` : <span className="italic opacity-70">{u.status === "terjual" ? "tanggal keluar belum diisi" : "tanggal masuk belum diisi"}</span>}</p></div>
               <Tag color={u.status === "terjual" ? "emerald" : u.status === "siap" ? "blue" : "amber"}>{u.status === "terjual" ? "Terjual" : u.status === "siap" ? "Siap jual" : "Proses"}</Tag>
             </div>
             {u.photo ? (
