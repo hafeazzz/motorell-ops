@@ -40,6 +40,15 @@ const inMonth = (d, ym) => d && d.slice(0, 7) === ym;
 const rp = (n) => "Rp " + (Number(n) || 0).toLocaleString("id-ID");
 const now = () => { try { return new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }); } catch (e) { return new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }); } };
 const monthLabel = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" }); };
+// Selisih hari dari tanggal "YYYY-MM-DD" ke hari ini (0 = hari ini). Pakai tanggal lokal.
+const daysSinceDate = (ds) => { if (!ds) return null; const strip = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); return Math.round((strip(new Date()) - strip(new Date(ds + "T00:00:00"))) / 86400000); };
+// Label "sejak" + badge ringkas berdasarkan umur tanggal terjual.
+const soldAgeInfo = (ds) => {
+  const d = daysSinceDate(ds); if (d == null) return null;
+  const sejak = d <= 0 ? "hari ini" : d === 1 ? "kemarin" : `${d} hari lalu`;
+  const badge = d <= 0 ? { t: "Hari ini", c: "emerald" } : d === 1 ? { t: "Kemarin", c: "amber" } : d <= 7 ? { t: "Minggu ini", c: "blue" } : d <= 31 ? { t: "Bulan ini", c: "blue" } : { t: "Lama", c: "slate" };
+  return { sejak, badge };
+};
 const shiftMonth = (ym, d) => { const [y, m] = ym.split("-").map(Number); const i = y * 12 + (m - 1) + d; return `${Math.floor(i / 12)}-${pad2((i % 12) + 1)}`; };
 function wibParts() {
   try {
@@ -1590,8 +1599,13 @@ function DateBox({ label, value, onChange }) {
     <Field label={label}>
       <div className="relative">
         <div className={inputCls + " flex items-center pr-9 min-h-[42px]"}>{value ? <span>{fmt}</span> : <span className="s-muted">Pilih tanggal</span>}</div>
-        <input type="date" value={value || ""} onChange={(e) => onChange(e.target.value)} onClick={(e) => { try { e.currentTarget.showPicker && e.currentTarget.showPicker(); } catch (err) {} }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-        {value ? <button type="button" onClick={() => onChange("")} title="Kosongkan tanggal" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md s-soft s-muted active:scale-90 z-10"><X size={13} /></button> : null}
+        {/* Input date transparan HANYA menutupi area tampilan (kiri); saat ada nilai, sisakan ~40px
+            kanan supaya tombol X (reset) bisa ditekan. Di iOS, input date native "mencuri" tap
+            walau ada elemen z lebih tinggi di atasnya — inilah kenapa reset tanggal dulu tak jalan
+            di iPhone (picker malah terbuka). iOS juga tidak punya opsi clear di picker-nya, jadi X
+            harus benar-benar bisa ditekan. */}
+        <input type="date" value={value || ""} onChange={(e) => onChange(e.target.value)} onClick={(e) => { try { e.currentTarget.showPicker && e.currentTarget.showPicker(); } catch (err) {} }} className={`absolute inset-y-0 left-0 opacity-0 cursor-pointer ${value ? "right-9" : "right-0"}`} />
+        {value ? <button type="button" onClick={() => onChange("")} title="Kosongkan tanggal" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-md s-soft s-muted active:scale-90 z-10"><X size={14} /></button> : null}
       </div>
     </Field>
   );
@@ -1694,8 +1708,9 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
     const wasSold = unit.status === "terjual";
     unitOps.update(unitId, (u) => {
       u.status = status;
-      if (status === "terjual") { if (!u.soldAt) u.soldAt = today(); }
-      else { u.soldAt = null; }
+      // Audit: catat siapa yang menandai terjual (sekali, tidak ditimpa). Dikosongkan kalau un-sold.
+      if (status === "terjual") { if (!u.soldAt) u.soldAt = today(); if (!u.soldBy && me) u.soldBy = me.id; }
+      else { u.soldAt = null; u.soldBy = null; }
       return u;
     });
     if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
@@ -1725,6 +1740,16 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       <Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><DateBox label="Tanggal masuk" value={unit.inDate} onChange={(v) => setField("inDate", v)} /><DateBox label="Tanggal keluar (terjual)" value={unit.soldAt} onChange={(v) => setField("soldAt", v || null)} /></div>
+      {unit.status === "terjual" && unit.soldAt && (() => {
+        const info = soldAgeInfo(unit.soldAt); const by = unit.soldBy && (state.users.find((x) => x.id === unit.soldBy) || {}).name;
+        return (
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 -mt-2 mb-3 text-[11px] s-muted">
+            {info && <Tag color={info.badge.c}>{info.badge.t}</Tag>}
+            {info && <span>Terjual {info.sejak}</span>}
+            {by && <span>· ditandai oleh <span className="s-text font-semibold">{by}</span></span>}
+          </div>
+        );
+      })()}
       <div className="grid grid-cols-2 gap-2"><Field label="Kode investor"><input className={inputCls} defaultValue={unit.investorCode || ""} onBlur={(e) => setField("investorCode", e.target.value.trim())} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} defaultValue={unit.odometer || ""} onBlur={(e) => setField("odometer", +e.target.value || 0)} placeholder="cth: 5000" /></Field></div>
       {isMgr && unit.investorCode && (
         <Field label={`Bagi hasil investor ${unit.investorCode} (%)`}><input type="number" min="0" max="100" className={inputCls} defaultValue={unit.investorShare || ""} onBlur={(e) => setField("investorShare", Math.max(0, Math.min(100, +e.target.value || 0)))} placeholder="cth: 20" /></Field>
@@ -2157,7 +2182,7 @@ function ArsipTab({ state, me, update, unitOps }) {
                   {u.photo ? <img src={u.photo} className="w-12 h-12 rounded-lg object-cover shrink-0" alt="" /> : <div className="w-12 h-12 rounded-lg s-soft grid place-items-center shrink-0"><Bike size={18} className="s-muted" /></div>}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold truncate">{u.name}</p>
-                    <p className="text-[11px] s-muted">{u.plate ? u.plate + " · " : ""}Terjual {dateLabel(u.soldAt)}</p>
+                    <p className="text-[11px] s-muted">{u.plate ? u.plate + " · " : ""}Terjual {dateLabel(u.soldAt)}{u.soldBy && (state.users.find((x) => x.id === u.soldBy) || {}).name ? " · oleh " + state.users.find((x) => x.id === u.soldBy).name : ""}</p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold">{rp(u.sellPrice || 0)}</p>
