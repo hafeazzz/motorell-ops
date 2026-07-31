@@ -113,8 +113,14 @@ function clickSound(e) {
 /* ============ Config ============ */
 const OWNER_PW = "@Motorell#";
 const SALE_BONUS = 200000;
+/* Apakah unit dihitung "terjual" di bulan `ym` (ym kosong = sepanjang waktu).
+   Unit terjual TANPA soldAt (mis. tanggalnya kehapus lewat tombol X) ikut dihitung di BULAN
+   BERJALAN saja. Kalau dihitung di semua bulan, satu unit tanpa tanggal bakal muncul di tiap
+   laporan bulan lampau DAN bikin bonus Rp200rb kebayar berulang tiap bulan — karena bonus
+   dihitung ulang per bulan (saleBonusFor), bukan disimpan. */
+const soldInMonth = (u, ym) => u.status === "terjual" && (!ym || (u.soldAt ? inMonth(u.soldAt, ym) : ym === month()));
 // Bonus penjualan dihitung langsung dari jumlah unit terjual (tanpa simpan), jadi selalu sinkron.
-const soldUnitCount = (s, ym) => (s.units || []).filter((u) => u.status === "terjual" && (!ym || inMonth(u.soldAt, ym))).length;
+const soldUnitCount = (s, ym) => (s.units || []).filter((u) => soldInMonth(u, ym)).length;
 const saleBonusFor = (s, u, ym) => (u && u.saleBonus ? soldUnitCount(s, ym) * SALE_BONUS : 0);
 const manualExtras = (s, userId, ym) => (s.extras || []).filter((x) => x.userId === userId && !x.auto && (!ym || inMonth(x.date, ym)));
 const totalExtraFor = (s, u, ym) => saleBonusFor(s, u, ym) + manualExtras(s, u.id, ym).reduce((a, x) => a + x.amount, 0);
@@ -1301,13 +1307,13 @@ function HomeTab({ state, me, isOwner, go, onInspeksi }) {
   useEffect(() => { const iv = setInterval(() => setTick((t) => t + 1), 60000); return () => clearInterval(iv); }, []);
   const g = greeting();
   const proses = state.units.filter((u) => u.status === "proses").length;
-  const monthSold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).length;
+  const monthSold = state.units.filter((u) => soldInMonth(u, month())).length;
   const sold = state.units.filter((u) => u.status === "terjual");
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
   const stokAktif = state.units.filter((u) => u.status !== "terjual").length;
-  const monthProfit = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
+  const monthProfit = state.units.filter((u) => soldInMonth(u, month())).reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)), 0);
   // Keuntungan bersih bln ini = kotor − komisi − jatah investor (pakai unitProfit, sama spt Laporan).
-  const monthNet = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, month())).reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)); }, 0);
+  const monthNet = state.units.filter((u) => soldInMonth(u, month())).reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : (u.sellPrice || 0) - u.buyPrice - expByUnit(state, u.id)); }, 0);
   const todayAbsen = state.attendance.filter((a) => a.date === today());
   const myTasks = state.tasks.filter((t) => t.userId === me.id && !t.done);
   const myExtras = manualExtras(state, me.id, month());
@@ -1973,7 +1979,7 @@ function TimTab({ state, update, isOwner, taskOps }) {
       })}</div>
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
-      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Atur extra cash">{extraTo && (() => { const u2 = state.users.find((x) => x.id === extraTo); const auto = saleBonusFor(state, u2, month()); const soldN = state.units.filter((x) => x.status === "terjual" && inMonth(x.soldAt, month())).length; return (<><p className="text-sm font-semibold mb-1">{u2 && u2.name}</p>{u2 && u2.saleBonus && <p className="text-[11px] s-muted mb-2 leading-relaxed">Bonus otomatis bulan ini: <b className="ac-text">{rp(auto)}</b> ({soldN} motor terjual × Rp200rb). Set total di bawah kalau mau nambah bonus atau motong (mis. penalti).</p>}<Field label="Total extra cash bulan ini (Rp)"><input type="number" className={inputCls} value={extraVal} onChange={(e) => setExtraVal(e.target.value)} placeholder="300000" /></Field><Btn onClick={saveExtra} className="w-full mt-2">Simpan</Btn></>); })()}</Modal>
+      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Atur extra cash">{extraTo && (() => { const u2 = state.users.find((x) => x.id === extraTo); const auto = saleBonusFor(state, u2, month()); const soldN = soldUnitCount(state, month()); return (<><p className="text-sm font-semibold mb-1">{u2 && u2.name}</p>{u2 && u2.saleBonus && <p className="text-[11px] s-muted mb-2 leading-relaxed">Bonus otomatis bulan ini: <b className="ac-text">{rp(auto)}</b> ({soldN} motor terjual × Rp200rb). Set total di bawah kalau mau nambah bonus atau motong (mis. penalti).</p>}<Field label="Total extra cash bulan ini (Rp)"><input type="number" className={inputCls} value={extraVal} onChange={(e) => setExtraVal(e.target.value)} placeholder="300000" /></Field><Btn onClick={saveExtra} className="w-full mt-2">Simpan</Btn></>); })()}</Modal>
       <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
@@ -1982,7 +1988,7 @@ function TimTab({ state, update, isOwner, taskOps }) {
 /* ============ Laporan Bulanan (owner) ============ */
 function monthlyReport(state, ym) {
   const expFor = (id) => state.expenses.filter((e) => e.unitId === id).reduce((a, e) => a + e.amount, 0);
-  const sold = state.units.filter((u) => u.status === "terjual" && inMonth(u.soldAt, ym));
+  const sold = state.units.filter((u) => soldInMonth(u, ym));
   const revenue = sold.reduce((a, u) => a + (u.sellPrice || 0), 0);
   const profit = sold.reduce((a, u) => a + ((u.sellPrice || 0) - u.buyPrice - expFor(u.id)), 0);
   // Keuntungan bersih = kotor − komisi penjualan − jatah investor, per unit lalu dijumlah.
