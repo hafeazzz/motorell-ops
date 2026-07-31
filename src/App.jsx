@@ -42,6 +42,8 @@ const now = () => { try { return new Date().toLocaleTimeString("id-ID", { hour: 
 const monthLabel = (ym) => { const [y, m] = ym.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" }); };
 // Selisih hari dari tanggal "YYYY-MM-DD" ke hari ini (0 = hari ini). Pakai tanggal lokal.
 const daysSinceDate = (ds) => { if (!ds) return null; const strip = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); return Math.round((strip(new Date()) - strip(new Date(ds + "T00:00:00"))) / 86400000); };
+// Geser tanggal "YYYY-MM-DD" sebanyak n hari (n negatif = mundur). Dipakai tombol cepat DateBox.
+const dayShift = (ds, n) => { const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
 // Label "sejak" + badge ringkas berdasarkan umur tanggal terjual.
 const soldAgeInfo = (ds) => {
   const d = daysSinceDate(ds); if (d == null) return null;
@@ -224,7 +226,7 @@ const seed = () => ({
 // Default field unit — dipakai normalize() DAN saat load unit dari tabel `units`, supaya unit lama
 // yang belum punya field tertentu tetap terisi. `...u` di akhir menjaga SEMUA field asli (termasuk
 // inspectionResult & foto) — tidak ada yang hilang.
-const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
+const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, soldBy: null, soldAtPrev: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
 
 function normalize(s) {
   const arr = (x, d) => (Array.isArray(x) ? x : d);
@@ -676,16 +678,31 @@ function MotorellOps() {
   };
   // Operasi unit lewat tabel `units` (row-level, tidak menimpa blob). Update lokal optimistik lalu
   // simpan baris unit itu saja. Expense/inspeksi terkait tetap di blob via update() biasa.
+  // Kalau tulis ke tabel GAGAL (sinyal putus / RLS), balikin state lokal ke kondisi sebelumnya dan
+  // kasih tahu user. Sebelumnya hasilnya diabaikan → layar seolah tersimpan padahal server tak
+  // pernah terima; user baru sadar pas buka HP lain dan datanya beda.
+  const unitFail = (what) => setToast({ kind: "gagal", title: `Gagal menyimpan ${what}`, body: "Perubahan dibatalkan. Cek koneksi lalu ulangi." });
   const unitOps = {
-    add: async (unit) => { setState((s) => (s ? { ...s, units: [...s.units, unit] } : s)); await window.storage.unitSave(unit); },
+    add: async (unit) => {
+      setState((s) => (s ? { ...s, units: [...s.units, unit] } : s));
+      const r = await window.storage.unitSave(unit);
+      if (!r || !r.ok) { setState((s) => (s ? { ...s, units: s.units.filter((u) => u.id !== unit.id) } : s)); unitFail("unit baru"); }
+    },
     update: async (unitId, mutator) => {
       const cur = stateRef.current && stateRef.current.units.find((u) => u.id === unitId);
       if (!cur) return;
+      const prev = structuredClone(cur);
       const next = mutator(structuredClone(cur)) || structuredClone(cur);
       setState((s) => (s ? { ...s, units: s.units.map((u) => (u.id === unitId ? next : u)) } : s));
-      await window.storage.unitSave(next);
+      const r = await window.storage.unitSave(next);
+      if (!r || !r.ok) { setState((s) => (s ? { ...s, units: s.units.map((u) => (u.id === unitId ? prev : u)) } : s)); unitFail("perubahan unit"); }
     },
-    remove: async (unitId) => { setState((s) => (s ? { ...s, units: s.units.filter((u) => u.id !== unitId) } : s)); await window.storage.unitDelete(unitId); },
+    remove: async (unitId) => {
+      const prev = stateRef.current && stateRef.current.units.find((u) => u.id === unitId);
+      setState((s) => (s ? { ...s, units: s.units.filter((u) => u.id !== unitId) } : s));
+      const r = await window.storage.unitDelete(unitId);
+      if ((!r || !r.ok) && prev) { setState((s) => (s ? { ...s, units: [...s.units, prev] } : s)); unitFail("hapus unit"); }
+    },
   };
 
   return (
@@ -861,6 +878,7 @@ button:active{transform:scale(.97)}
 .mr-toast.toast-end{background:linear-gradient(135deg,#f97316,#ea580c)}
 .mr-toast.toast-in{background:linear-gradient(135deg,#3b82f6,#2563eb)}
 .mr-toast.toast-out{background:linear-gradient(135deg,#8b5cf6,#7c3aed)}
+.mr-toast.toast-fail{background:linear-gradient(135deg,#f43f5e,#e11d48)}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,24px) scale(.92)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @media (prefers-reduced-motion:reduce){.live-dot,.monitoring-panel,.mr-toast{animation:none}}
 
@@ -1249,7 +1267,7 @@ function getSunMoonElement(phase) {
 // Toast alarm istirahat — dipakai baik di layar login maupun app utama, supaya alarm yang
 // kebetulan bunyi pas tab lagi nongkrong di layar login (belum ada yang pilih user) tetap
 // kelihatan, bukan cuma bunyi+getar tanpa ada yang bisa dibaca.
-const TOAST_CLASS = { break_start: "toast-start", break_end: "toast-end", absen_masuk: "toast-in", absen_pulang: "toast-out" };
+const TOAST_CLASS = { break_start: "toast-start", break_end: "toast-end", absen_masuk: "toast-in", absen_pulang: "toast-out", gagal: "toast-fail" };
 function AlarmToast({ toast, onClose }) {
   if (!toast) return null;
   return (
@@ -1598,13 +1616,27 @@ function ProfitEstimate({ state }) {
 }
 const Read = ({ label, value, accent }) => <div className="s-soft rounded-xl py-2 px-3 text-center"><p className="text-[10px] s-muted mb-0.5">{label}</p><p className="text-sm font-bold break-words leading-tight" style={accent ? { color: accent } : {}}>{value}</p></div>;
 
-// Tampilan tanggal rapi (rata kiri) dengan input native transparan di atasnya untuk buka picker; plus tombol kosongkan yang andal.
+/* Tampilan tanggal rapi + tombol cepat, dibikin supaya sama persis di semua device.
+   CATATAN: sengaja TIDAK pakai <Field>, karena Field itu <label>. Tombol apa pun di dalam <label>
+   yang membungkus <input type="date"> ikut memicu input-nya → tap "Hari ini"/"Kemarin" malah buka
+   picker. Jadi labelnya digambar manual di <div>. */
 function DateBox({ label, value, onChange }) {
   const fmt = value ? new Date(value + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "";
+  // Label relatif selalu tampil: tanggal yang kegeser ke bulan lain langsung ketahuan ("31 hari
+  // lalu" padahal harusnya minggu ini). Tanpa ini, salah bulan cuma kelihatan kalau user hafal
+  // tanggalnya — persis yang bikin satu unit diam-diam pindah ke bulan sebelumnya.
+  const d = daysSinceDate(value);
+  const rel = d == null ? "" : d === 0 ? "hari ini" : d === 1 ? "kemarin" : d > 0 ? `${d} hari lalu` : `${-d} hari lagi`;
+  const aneh = d != null && (d < 0 || d > 60); // masa depan / terlalu lama = kemungkinan salah pilih
+  const t = today();
+  const cepat = [["Hari ini", t], ["Kemarin", dayShift(t, -1)]];
   return (
-    <Field label={label}>
+    <div className="block mb-3">
+      <span className="text-xs font-semibold s-muted mb-1 block">{label}</span>
       <div className="relative">
-        <div className={inputCls + " flex items-center pr-9 min-h-[42px]"}>{value ? <span>{fmt}</span> : <span className="s-muted">Pilih tanggal</span>}</div>
+        <div className={inputCls + " flex items-center gap-1.5 pr-9 min-h-[42px]"}>
+          {value ? <><span className="truncate">{fmt}</span><span className={`text-[10px] shrink-0 ${aneh ? "text-amber-500 font-semibold" : "s-muted"}`}>· {rel}</span></> : <span className="s-muted">Pilih tanggal</span>}
+        </div>
         {/* Input date transparan HANYA menutupi area tampilan (kiri); saat ada nilai, sisakan ~40px
             kanan supaya tombol X (reset) bisa ditekan. Di iOS, input date native "mencuri" tap
             walau ada elemen z lebih tinggi di atasnya — inilah kenapa reset tanggal dulu tak jalan
@@ -1613,7 +1645,14 @@ function DateBox({ label, value, onChange }) {
         <input type="date" value={value || ""} onChange={(e) => onChange(e.target.value)} onClick={(e) => { try { e.currentTarget.showPicker && e.currentTarget.showPicker(); } catch (err) {} }} className={`absolute inset-y-0 left-0 opacity-0 cursor-pointer ${value ? "right-9" : "right-0"}`} />
         {value ? <button type="button" onClick={() => onChange("")} title="Kosongkan tanggal" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-md s-soft s-muted active:scale-90 z-10"><X size={14} /></button> : null}
       </div>
-    </Field>
+      {/* Tombol cepat sama sekali tidak menyentuh picker native → perilakunya identik di
+          iOS/Android/desktop. Picker cuma perlu dibuka kalau tanggalnya memang jauh. */}
+      <div className="flex gap-1.5 mt-1.5">
+        {cepat.map(([l, v]) => (
+          <button key={l} type="button" onClick={() => onChange(v)} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full active:scale-95 transition ${value === v ? "ac-bg" : "s-soft s-muted"}`}>{l}</button>
+        ))}
+      </div>
+    </div>
   );
 }
 // Buat unit motor baru + otomatis expense "Cek unit" Rp250.000 (kategori jasa) — Tugas 1.
@@ -1706,20 +1745,36 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
   const byCat = items.reduce((m, e) => ({ ...m, [e.cat]: (m[e.cat] || 0) + e.amount }), {});
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
   const [confirmDel, setConfirmDel] = useState(false);
+  const [confirmUnsell, setConfirmUnsell] = useState(null); // status tujuan saat batal jual
   const [zoom, setZoom] = useState("");
-  useEffect(() => { setConfirmDel(false); }, [unitId]);
+  useEffect(() => { setConfirmDel(false); setConfirmUnsell(null); }, [unitId]);
   // Edit unit → tabel `units` (row-level, anti-tabrakan). Expense unit tetap di blob.
   const setField = (k, v) => unitOps.update(unitId, (u) => { u[k] = v; return u; });
-  const setStatus = (status) => {
+  const applyStatus = (status) => {
     const wasSold = unit.status === "terjual";
     unitOps.update(unitId, (u) => {
       u.status = status;
       // Audit: catat siapa yang menandai terjual (sekali, tidak ditimpa). Dikosongkan kalau un-sold.
-      if (status === "terjual") { if (!u.soldAt) u.soldAt = today(); if (!u.soldBy && me) u.soldBy = me.id; }
-      else { u.soldAt = null; u.soldBy = null; }
+      if (status === "terjual") {
+        // Pulihkan tanggal terakhir kalau ada — jadi batal-jual lalu jual lagi tidak kehilangan
+        // tanggal aslinya (kalau langsung today(), unit bisa lompat ke bulan yang salah).
+        if (!u.soldAt) u.soldAt = u.soldAtPrev || today();
+        if (!u.soldBy && me) u.soldBy = me.id;
+        u.soldAtPrev = null;
+      } else {
+        if (u.soldAt) u.soldAtPrev = u.soldAt; // disimpan diam-diam buat jaga-jaga salah tekan
+        u.soldAt = null; u.soldBy = null;
+      }
       return u;
     });
+    setConfirmUnsell(null);
     if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
+  };
+  // Batal jual menghapus tanggal terjual → unit langsung lenyap dari hitungan bulan itu. Dulu ini
+  // terjadi tanpa peringatan sama sekali, jadi sekarang wajib dikonfirmasi dulu.
+  const setStatus = (status) => {
+    if (unit.status === "terjual" && status !== "terjual" && unit.soldAt) { setConfirmUnsell(status); return; }
+    applyStatus(status);
   };
   const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
   const delUnit = () => { unitOps.remove(unitId); update((s) => { s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
@@ -1771,7 +1826,14 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
         )}
         <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
       </div>
-      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "ac-border ac-soft" : "s-border s-muted"}`}>{l}</button>)}</div></div>
+      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "ac-border ac-soft" : "s-border s-muted"}`}>{l}</button>)}</div>
+        {confirmUnsell && (
+          <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+            <p className="text-[11px] leading-relaxed">Batalkan penjualan <b>{unit.name}</b>? Tanggal terjual <b>{unit.soldAt}</b> akan dihapus dan unit ini <b>hilang dari laporan bulan itu</b>. Tanggalnya diingat, jadi kalau ditandai terjual lagi otomatis balik.</p>
+            <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmUnsell(null)}>Batal</Btn><button onClick={() => applyStatus(confirmUnsell)} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-amber-500 text-white active:scale-[0.97] transition">Ya, batalkan</button></div>
+          </div>
+        )}
+      </div>
       {Object.keys(byCat).length > 0 && <><p className="text-xs font-bold s-muted mb-2">Ringkasan per kategori</p><div className="grid grid-cols-2 gap-2 mb-4">{Object.entries(byCat).map(([k, v]) => <div key={k} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">{React.createElement(CATS[k].icon, { size: 15, style: { color: CATS[k].color } })}<div><p className="text-[10px] s-muted">{CATS[k].label}</p><p className="text-xs font-bold">{rp(v)}</p></div></div>)}</div></>}
       <p className="text-xs font-bold s-muted mb-2">Rincian transaksi</p>
       <div className="space-y-1.5 mb-4">{items.length === 0 && <p className="text-xs s-muted">Belum ada pengeluaran.</p>}{items.map((e) => <div key={e.id} className="flex items-center justify-between s-soft rounded-lg px-3 py-2"><div className="text-sm"><p className="font-medium">{e.note || CATS[e.cat].label}</p><p className="text-[10px] s-muted">{CATS[e.cat].label} · {userName(e.by)} · {e.date}</p></div><div className="flex items-center gap-2"><span className="text-sm font-bold">{rp(e.amount)}</span><button onClick={() => onEditExp(e)} className="s-muted"><Pencil size={14} /></button><button onClick={() => delExp(e.id)} className="text-rose-400"><Trash2 size={14} /></button></div></div>)}</div>
