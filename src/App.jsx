@@ -114,7 +114,16 @@ function clickSound(e) {
 
 /* ============ Config ============ */
 const OWNER_PW = "@Motorell#";
-const SALE_BONUS = 200000;
+/* Tarif bonus penjualan per unit. PENTING: bonus & komisi TIDAK pernah disimpan — keduanya
+   dihitung ulang dari state.units tiap kali layar digambar (lihat saleBonusFor & unitProfit).
+   Jadi kalau angkanya cuma diganti begitu saja, SEMUA bulan yang sudah lewat ikut berubah:
+   bonus Juni/Juli langsung susut separuh dan profit bersih tiap unit lama naik. Karena itu
+   tarifnya ditentukan per bulan, bukan satu konstanta global. */
+const SALE_BONUS = 200000;            // tarif lama — berlaku sampai Juli 2026
+const SALE_BONUS_NEW = 100000;        // tarif baru
+const SALE_BONUS_NEW_FROM = "2026-08"; // mulai berlaku Agustus 2026
+// ym kosong = pakai bulan berjalan (unit yang belum terjual dinilai dgn tarif yang berlaku kini).
+const saleBonusRate = (ym) => ((ym || month()) >= SALE_BONUS_NEW_FROM ? SALE_BONUS_NEW : SALE_BONUS);
 /* Apakah unit dihitung "terjual" di bulan `ym` (ym kosong = sepanjang waktu).
    Unit terjual TANPA soldAt (mis. tanggalnya kehapus lewat tombol X) ikut dihitung di BULAN
    BERJALAN saja. Kalau dihitung di semua bulan, satu unit tanpa tanggal bakal muncul di tiap
@@ -123,7 +132,7 @@ const SALE_BONUS = 200000;
 const soldInMonth = (u, ym) => u.status === "terjual" && (!ym || (u.soldAt ? inMonth(u.soldAt, ym) : ym === month()));
 // Bonus penjualan dihitung langsung dari jumlah unit terjual (tanpa simpan), jadi selalu sinkron.
 const soldUnitCount = (s, ym) => (s.units || []).filter((u) => soldInMonth(u, ym)).length;
-const saleBonusFor = (s, u, ym) => (u && u.saleBonus ? soldUnitCount(s, ym) * SALE_BONUS : 0);
+const saleBonusFor = (s, u, ym) => (u && u.saleBonus ? soldUnitCount(s, ym) * saleBonusRate(ym) : 0);
 const manualExtras = (s, userId, ym) => (s.extras || []).filter((x) => x.userId === userId && !x.auto && (!ym || inMonth(x.date, ym)));
 const totalExtraFor = (s, u, ym) => saleBonusFor(s, u, ym) + manualExtras(s, u.id, ym).reduce((a, x) => a + x.amount, 0);
 const notifOK = () => typeof window !== "undefined" && "Notification" in window;
@@ -1196,7 +1205,7 @@ function canSeeProfit(me, unit) {
 /* Estimasi keuntungan dari motor yang SIAP JUAL tapi belum terjual.
    Bersih = profit kotor − komisi penjualan − jatah investor.
    Komisi tidak dihardcode 400rb: dihitung dari jumlah orang yang dapat bonus penjualan
-   (state.users[].saleBonus) × SALE_BONUS — sekarang Omen + Beceng = 2 × 200rb.
+   (state.users[].saleBonus) × tarif bonus bulan berjalan — sekarang Omen + Beceng = 2 × 100rb.
    Jatah investor dihitung per unit dari investorShare (%), sama seperti di UangTab.
    Unit yang belum diisi harga jual tidak bisa diestimasi, jadi dipisah (bukan dianggap 0). */
 function estimateProfit(state) {
@@ -1204,7 +1213,7 @@ function estimateProfit(state) {
   const withPrice = ready.filter((u) => (+u.sellPrice || 0) > 0);
   const gross = withPrice.reduce((a, u) => a + (u.sellPrice - u.buyPrice - expByUnit(state, u.id)), 0);
   const bonusPeople = (state.users || []).filter((u) => u.saleBonus).length;
-  const commissionPerUnit = bonusPeople * SALE_BONUS;
+  const commissionPerUnit = bonusPeople * saleBonusRate(month()); // unit belum terjual → tarif kini
   const commission = withPrice.length * commissionPerUnit;
   const investorCut = withPrice.reduce((a, u) => {
     const share = +u.investorShare || 0;
@@ -1220,17 +1229,20 @@ function estimateProfit(state) {
    Pakai aturan yang sama persis dgn estimateProfit (versi agregat) biar angka per-unit dan
    totalnya tidak beda:
    - kotor    = harga jual − modal beli − pengeluaran unit
-   - komisi   = SALE_BONUS × jumlah orang saleBonus (Omen + Beceng = 2 × 200rb sekarang; dinamis)
+   - komisi   = tarif bonus × jumlah orang saleBonus (Omen + Beceng = 2 orang; dinamis). Tarifnya
+                ikut BULAN TERJUALNYA unit, jadi unit lama tetap dihitung 200rb walau tarif baru
+                (100rb) sudah berlaku — profit bersih bulan lampau tidak berubah sendiri.
    - investor = kotor × investorShare% (cuma kalau untung & ada kode investor)
    Balik null kalau harga jual belum diisi (tidak bisa dihitung, jangan dianggap 0). */
 function unitProfit(state, unit) {
   if (!unit || !unit.sellPrice) return null;
   const gross = unit.sellPrice - unit.buyPrice - expByUnit(state, unit.id);
   const bonusPeople = (state.users || []).filter((u) => u.saleBonus).length;
-  const commission = bonusPeople * SALE_BONUS;
+  const rate = saleBonusRate((unit.soldAt || "").slice(0, 7)); // belum terjual → tarif bulan kini
+  const commission = bonusPeople * rate;
   const share = +unit.investorShare || 0;
   const investorCut = unit.investorCode && share > 0 && gross > 0 ? Math.round((gross * share) / 100) : 0;
-  return { gross, bonusPeople, commission, share, investorCut, net: gross - commission - investorCut };
+  return { gross, bonusPeople, rate, commission, share, investorCut, net: gross - commission - investorCut };
 }
 
 // Angka Rupiah dengan animasi hitung-naik (pola sama seperti CountVal, tapi hasilnya diformat rp()).
@@ -1735,7 +1747,7 @@ function ProfitBreakdown({ state, unit }) {
         <span className={`font-bold ${p.gross >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(p.gross)}</span>
       </div>
       <div className="flex justify-between gap-2">
-        <span className="s-muted">Komisi penjualan ({p.bonusPeople} × {rp(SALE_BONUS)})</span>
+        <span className="s-muted">Komisi penjualan ({p.bonusPeople} × {rp(p.rate)})</span>
         <span className="font-semibold text-rose-500">{minus(p.commission)}</span>
       </div>
       {unit.investorCode && p.share > 0 && (
@@ -2064,8 +2076,8 @@ function TimTab({ state, update, isOwner, taskOps }) {
       })}</div>
       <Modal open={openU} onClose={() => setOpenU(false)} title="Tambah anggota tim"><Field label="Nama"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nama pegawai" /></Field><Field label="Posisi"><select className={inputCls} value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><p className="text-[11px] s-muted mb-2">Pegawai baru bikin password sendiri pas login pertama.</p><Btn onClick={addUser} className="w-full mt-1">Tambah</Btn></Modal>
       <Modal open={!!assignTo} onClose={() => setAssignTo(null)} title="Kasih task ke pegawai"><Field label="Task"><input className={inputCls} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Follow up calon buyer…" /></Field><Btn onClick={assign} className="w-full mt-2">Tugaskan</Btn></Modal>
-      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Atur extra cash">{extraTo && (() => { const u2 = state.users.find((x) => x.id === extraTo); const auto = saleBonusFor(state, u2, month()); const soldN = soldUnitCount(state, month()); return (<><p className="text-sm font-semibold mb-1">{u2 && u2.name}</p>{u2 && u2.saleBonus && <p className="text-[11px] s-muted mb-2 leading-relaxed">Bonus otomatis bulan ini: <b className="ac-text">{rp(auto)}</b> ({soldN} motor terjual × Rp200rb). Set total di bawah kalau mau nambah bonus atau motong (mis. penalti).</p>}<Field label="Total extra cash bulan ini (Rp)"><input type="number" className={inputCls} value={extraVal} onChange={(e) => setExtraVal(e.target.value)} placeholder="300000" /></Field><Btn onClick={saveExtra} className="w-full mt-2">Simpan</Btn></>); })()}</Modal>
-      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus Rp200rb tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
+      <Modal open={!!extraTo} onClose={() => setExtraTo(null)} title="Atur extra cash">{extraTo && (() => { const u2 = state.users.find((x) => x.id === extraTo); const auto = saleBonusFor(state, u2, month()); const soldN = soldUnitCount(state, month()); return (<><p className="text-sm font-semibold mb-1">{u2 && u2.name}</p>{u2 && u2.saleBonus && <p className="text-[11px] s-muted mb-2 leading-relaxed">Bonus otomatis bulan ini: <b className="ac-text">{rp(auto)}</b> ({soldN} motor terjual × {rp(saleBonusRate(month()))}). Set total di bawah kalau mau nambah bonus atau motong (mis. penalti).</p>}<Field label="Total extra cash bulan ini (Rp)"><input type="number" className={inputCls} value={extraVal} onChange={(e) => setExtraVal(e.target.value)} placeholder="300000" /></Field><Btn onClick={saveExtra} className="w-full mt-2">Simpan</Btn></>); })()}</Modal>
+      <Modal open={!!editU} onClose={() => setEditU(null)} title="Edit anggota"><Field label="Nama"><input className={inputCls} value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></Field><Field label="Posisi"><select className={inputCls} value={ef.position} onChange={(e) => setEf({ ...ef, position: e.target.value })}>{["Mekanik", "Media", "Sales", "Admin"].map((p) => <option key={p}>{p}</option>)}</select></Field><button onClick={() => setEf({ ...ef, saleBonus: !ef.saleBonus })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><Gift size={16} />Bonus {rp(saleBonusRate(month()))} tiap unit terjual</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.saleBonus ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.saleBonus ? "translate-x-5" : ""}`} /></div></button><button onClick={() => setEf({ ...ef, role: ef.role === "admin" ? "staff" : "admin" })} className="w-full flex items-center justify-between s-soft rounded-xl px-4 py-3 mb-1"><span className="text-sm font-semibold flex items-center gap-2 text-left"><ShieldCheck size={16} />Akses Admin (pantau + backup + reset password)</span><div className={`w-12 h-7 rounded-full p-1 transition shrink-0 ${ef.role === "admin" ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${ef.role === "admin" ? "translate-x-5" : ""}`} /></div></button><Btn onClick={saveEdit} className="w-full mt-1">Simpan</Btn></Modal>
     </div>
   );
 }
