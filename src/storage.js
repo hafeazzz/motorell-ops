@@ -402,4 +402,8 @@ if (typeof window !== "undefined") {
   window.storage = storage;
 }
 
+// Klien Supabase dibuka juga supaya modul lain (mis. src/lib/supabase/transaksi.ts) memakai
+// klien yang SAMA. Bikin createClient() kedua = dua koneksi realtime ke project yang sama.
+export { supabase };
+
 export default storage;
