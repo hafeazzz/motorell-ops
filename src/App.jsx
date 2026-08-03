@@ -235,7 +235,7 @@ const seed = () => ({
 // Default field unit — dipakai normalize() DAN saat load unit dari tabel `units`, supaya unit lama
 // yang belum punya field tertentu tetap terisi. `...u` di akhir menjaga SEMUA field asli (termasuk
 // inspectionResult & foto) — tidak ada yang hilang.
-const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, soldBy: null, soldAtPrev: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
+const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, soldBy: null, soldAtPrev: null, brand: "", model: "", color: "", year: "", inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
 
 function normalize(s) {
   const arr = (x, d) => (Array.isArray(x) ? x : d);
@@ -1694,9 +1694,34 @@ function DateBox({ label, value, onChange }) {
 // Dipakai semua jalur pembuatan unit (form manual & alur Inspeksi) supaya konsisten.
 // Bangun objek unit (murni, tanpa efek samping). Unit disimpan ke tabel `units` via unitOps.add;
 // pengeluaran default "Cek unit" tetap di blob (expenses) via update() biasa.
+/* Identitas motor dipecah jadi 4 bagian wajib: merek, model, warna, tahun.
+   Bagian-bagiannya DISIMPAN terpisah (bukan cuma digabung jadi `name`) supaya Laporan bisa
+   mengelompokkan per model — kalau cuma punya nama gabungan, "Yamaha XSR 155 Hitam 2025" dan
+   "Yamaha XSR 155 Merah 2025" terhitung dua model berbeda di grafik motor terlaris. */
+const UNIT_YEAR_MIN = 1900;
+// Dilonggarkan satu tahun ke depan: motor model tahun depan biasa masuk showroom lebih awal.
+const unitYearMax = () => new Date().getFullYear() + 1;
+const unitPartsOf = (d) => ({
+  brand: String((d && d.brand) || "").trim(),
+  model: String((d && d.model) || "").trim(),
+  color: String((d && d.color) || "").trim(),
+  year: String((d && d.year) || "").trim(),
+});
+const unitNameFrom = (p) => [p.brand, p.model, p.color, p.year].map((x) => String(x || "").trim()).filter(Boolean).join(" ");
+// Label pengelompokan di Laporan: merek + model saja (tanpa warna/tahun). Unit lama belum punya
+// bagian-bagian ini, jadi jatuh balik ke nama lengkapnya supaya riwayat tetap kebaca.
+const unitGroupLabel = (u) => (u && u.model ? [u.brand, u.model].filter(Boolean).join(" ").trim() : (u && u.name) || "-");
+function unitPartsValid(d) {
+  const p = unitPartsOf(d);
+  if (!p.brand || !p.model || !p.color || !p.year) return false;
+  const th = Number(p.year);
+  return Number.isInteger(th) && th >= UNIT_YEAR_MIN && th <= unitYearMax();
+}
 function buildUnit(data, presetId) {
+  const p = unitPartsOf(data);
+  const composed = unitNameFrom(p);
   return {
-    id: presetId || uid(), name: data.name || "Motor baru", plate: data.plate || "",
+    id: presetId || uid(), name: composed || data.name || "Motor baru", ...p, plate: data.plate || "",
     buyPrice: +data.buyPrice || 0, sellPrice: +data.sellPrice || 0,
     status: data.status || "proses", investorCode: (data.investorCode || "").trim(),
     inDate: data.inDate || today(), soldAt: null, odometer: +data.odometer || 0,
@@ -1705,16 +1730,29 @@ function buildUnit(data, presetId) {
 }
 const defaultUnitExpense = (unitId, byId) => ({ id: uid(), unitId, cat: "jasa", amount: 250000, note: "Cek unit", by: byId || null, date: today() });
 function AddUnitModal({ open, onClose, update, unitOps, me }) {
-  const [f, setF] = useState({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" });
-  const save = () => { if (!f.name) return; const u = buildUnit(f); unitOps.add(u); update((s) => { s.expenses.push(defaultUnitExpense(u.id, me && me.id)); return s; }); setF({ name: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" }); onClose(); };
+  const kosong = { brand: "", model: "", color: "", year: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" };
+  const [f, setF] = useState(kosong);
+  const sah = unitPartsValid(f);
+  const save = () => { if (!sah) return; const u = buildUnit(f); unitOps.add(u); update((s) => { s.expenses.push(defaultUnitExpense(u.id, me && me.id)); return s; }); setF({ ...kosong, inDate: today() }); onClose(); };
   return (
     <Modal open={open} onClose={onClose} title="Tambah unit motor">
-      <Field label="Nama / tipe motor"><input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Honda Beat 2019" /></Field>
+      {/* 4 bagian wajib. Di HP menumpuk 1 kolom, mulai layar sedang jadi 2 kolom. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2">
+        <Field label="Merek *"><input className={inputCls} value={f.brand} onChange={(e) => setF({ ...f, brand: e.target.value })} placeholder="cth: Yamaha" /></Field>
+        <Field label="Model / tipe *"><input className={inputCls} value={f.model} onChange={(e) => setF({ ...f, model: e.target.value })} placeholder="cth: XSR 155" /></Field>
+        <Field label="Warna *"><input className={inputCls} value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} placeholder="cth: Hitam" /></Field>
+        <Field label="Tahun *"><input type="number" inputMode="numeric" min={UNIT_YEAR_MIN} max={unitYearMax()} className={inputCls} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value })} placeholder={String(new Date().getFullYear())} /></Field>
+      </div>
+      {/* Pratinjau nama: user langsung lihat hasil gabungannya sebelum menyimpan. */}
+      <p className="text-[11px] s-muted -mt-1 mb-3">
+        {unitNameFrom(f) ? <>Nama unit: <b className="s-text">{unitNameFrom(f)}</b></> : "Merek, model, warna, dan tahun wajib diisi."}
+      </p>
       <Field label="Plat nomor"><input className={inputCls} value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="B 1234 XYZ" /></Field>
       <DateBox label="Tanggal masuk" value={f.inDate} onChange={(v) => setF({ ...f, inDate: v })} />
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><Field label="Kode investor (opsional)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} value={f.odometer} onChange={(e) => setF({ ...f, odometer: e.target.value })} placeholder="cth: 5000" /></Field></div>
-      <Btn onClick={save} className="w-full mt-2">Simpan unit</Btn>
+      <Btn onClick={save} disabled={!sah} className="w-full mt-2">Simpan unit</Btn>
+      {!sah && <p className="text-[11px] s-muted text-center mt-1.5">Lengkapi merek, model, warna, dan tahun ({UNIT_YEAR_MIN}–{unitYearMax()}) dulu.</p>}
     </Modal>
   );
 }
@@ -2092,7 +2130,10 @@ function monthlyReport(state, ym) {
   // Pakai unitProfit biar aturannya sama persis dgn rincian di Detail unit & estimateProfit.
   const netProfit = sold.reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : (u.sellPrice || 0) - u.buyPrice - expFor(u.id)); }, 0);
   const byName = {};
-  sold.forEach((u) => { byName[u.name] = byName[u.name] || { count: 0, profit: 0, net: 0, revenue: 0 }; const p = unitProfit(state, u); byName[u.name].count++; byName[u.name].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].net += p ? p.net : (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[u.name].revenue += (u.sellPrice || 0); });
+  // Dikelompokkan per MEREK + MODEL, bukan nama lengkap: sejak nama unit memuat warna, memakai
+  // nama utuh bikin "XSR 155 Hitam" dan "XSR 155 Merah" terhitung dua model berbeda di grafik
+  // motor terlaris. Unit lama (belum punya field model) jatuh balik ke namanya — lihat unitGroupLabel.
+  sold.forEach((u) => { const k = unitGroupLabel(u); byName[k] = byName[k] || { count: 0, profit: 0, net: 0, revenue: 0 }; const p = unitProfit(state, u); byName[k].count++; byName[k].profit += (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[k].net += p ? p.net : (u.sellPrice || 0) - u.buyPrice - expFor(u.id); byName[k].revenue += (u.sellPrice || 0); });
   const groups = Object.entries(byName).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
   const liveDays = new Set(state.lives.filter((l) => inMonth(l.date, ym)).map((l) => l.date));
   const activeDays = new Set(state.attendance.filter((a) => inMonth(a.date, ym)).map((a) => a.date));
@@ -3060,7 +3101,10 @@ const INS_STATUS = [{ k: "baik", l: "Baik", c: "#10b981" }, { k: "perhatian", l:
 const INS_TOTAL = INSPEKSI_SECTIONS.reduce((a, s) => a + s.items.length, 0);
 
 function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit }) {
-  const [name, setName] = useState("");
+  const PARTS_KOSONG = { brand: "", model: "", color: "", year: "" };
+  const [parts, setParts] = useState(PARTS_KOSONG);
+  const name = unitNameFrom(parts); // nama gabungan, dipakai draft + riwayat inspeksi
+  const bolehBeli = unitPartsValid(parts);
   const [items, setItems] = useState({});
   const [notes, setNotes] = useState("");
   const [notePhotos, setNotePhotos] = useState([]);
@@ -3084,7 +3128,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
       catch (e) { if (!e || e.name !== "QuotaExceededError") { console.error("saveLocalDraft:", e); return; } }
     }
   };
-  const reset = () => { setName(""); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); clearLocalDraft(); };
+  const reset = () => { setParts(PARTS_KOSONG); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); clearLocalDraft(); };
   // ts = kapan item ini terakhir di-set — dipakai monitoring live & tampilan detail arsip.
   const setStatus = (key, st) => setItems((p) => {
     const cur = p[key] || {};
@@ -3114,7 +3158,9 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
         const d = JSON.parse(raw);
         const hasContent = d && (d.name || (d.items && Object.keys(d.items).length) || d.notes || (d.notePhotos && d.notePhotos.length));
         if (hasContent && window.confirm("Ada inspeksi yang belum selesai tersimpan di HP ini. Lanjutkan dari sana?")) {
-          setName(d.name || ""); setItems(d.items || {}); setNotes(d.notes || ""); setNotePhotos(d.notePhotos || []);
+          // Draft lama cuma menyimpan `name` gabungan yang tak bisa dipecah lagi — bagiannya
+          // dibiarkan kosong dan tinggal diisi ulang (draft memang berumur pendek).
+          setParts({ ...PARTS_KOSONG, ...(d.parts || {}) }); setItems(d.items || {}); setNotes(d.notes || ""); setNotePhotos(d.notePhotos || []);
         } else { clearLocalDraft(); }
       }
     } catch (e) {}
@@ -3145,13 +3191,15 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
         startedAt: startedAtRef.current || Date.now(),
       });
       // Draft LOKAL penuh (dengan foto per-item) — inilah yang menyelamatkan data kalau tab mati.
-      if (name.trim() || Object.keys(items).length || notes.trim() || notePhotos.length) saveLocalDraft({ name: name.trim(), items, notes: notes.trim(), notePhotos });
+      if (name.trim() || Object.keys(items).length || notes.trim() || notePhotos.length) saveLocalDraft({ name: name.trim(), parts, items, notes: notes.trim(), notePhotos });
     }, 1500);
     return () => clearTimeout(t);
-  }, [open, name, notes, notePhotos, items, totalChecked, beat, me.id, me.name]);
+  }, [open, name, parts, notes, notePhotos, items, totalChecked, beat, me.id, me.name]);
 
   const decide = (buy) => {
-    if (saving) return; setSaving(true);
+    if (saving) return;
+    if (buy && !bolehBeli) return; // pengaman kalau tombolnya sempat ketekan sebelum state ter-update
+    setSaving(true);
     const base = { id: uid(), date: today(), by: me.id, byName: me.name, items, notes: notes.trim(), notePhotos, name: name.trim() };
     if (!buy) {
       update((s) => { s.inspections.unshift({ ...base, decision: "tidak", unitId: null }); return s; });
@@ -3159,7 +3207,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
       return;
     }
     const newId = uid(); // dibuat di luar updater supaya tak balapan dengan setState async
-    const u = buildUnit({ name: name.trim() || "Motor (inspeksi)", inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, newId);
+    const u = buildUnit({ ...parts, inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, newId);
     unitOps.add(u); // unit → tabel `units`
     update((s) => { s.expenses.push(defaultUnitExpense(newId, me.id)); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; }); // expense + inspeksi → blob
     setSaving(false); reset(); onClose();
@@ -3175,7 +3223,17 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
         <div className="min-w-0 flex-1"><p className="font-bold leading-tight">Inspeksi Motor</p><p className="text-[10px] text-slate-400 leading-tight">Cek sebelum dibeli · {totalChecked}/{INS_TOTAL} item dicek</p></div>
       </div>
       <div className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-3">
-        <Field label="Nama / tipe motor (opsional)"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="cth: Honda Beat 2019" /></Field>
+        {/* Wajib kalau motornya jadi dibeli — tombol "Ya, beli" terkunci sampai keempatnya terisi.
+            Tombol "Tidak" tetap bisa ditekan: inspeksi yang batal cuma jadi riwayat, tidak bikin unit. */}
+        <div className="grid grid-cols-2 gap-x-2">
+          <Field label="Merek *"><input className={inputCls} value={parts.brand} onChange={(e) => setParts({ ...parts, brand: e.target.value })} placeholder="cth: Yamaha" /></Field>
+          <Field label="Model / tipe *"><input className={inputCls} value={parts.model} onChange={(e) => setParts({ ...parts, model: e.target.value })} placeholder="cth: XSR 155" /></Field>
+          <Field label="Warna *"><input className={inputCls} value={parts.color} onChange={(e) => setParts({ ...parts, color: e.target.value })} placeholder="cth: Hitam" /></Field>
+          <Field label="Tahun *"><input type="number" inputMode="numeric" min={UNIT_YEAR_MIN} max={unitYearMax()} className={inputCls} value={parts.year} onChange={(e) => setParts({ ...parts, year: e.target.value })} placeholder={String(new Date().getFullYear())} /></Field>
+        </div>
+        <p className="text-[11px] s-muted -mt-1 mb-2">
+          {name ? <>Nama unit: <b className="s-text">{name}</b></> : "Wajib diisi kalau motornya jadi dibeli."}
+        </p>
         {INSPEKSI_SECTIONS.map((sec) => {
           const op = openSec === sec.key; const cc = checkedCount(sec);
           return (
@@ -3218,7 +3276,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
         <Card className="p-4">
           <p className="font-bold text-center mb-3">Motor ini jadi dibeli?</p>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => decide(true)} disabled={saving} className="py-3 rounded-xl font-bold text-white bg-emerald-500 active:scale-95 disabled:opacity-50">Ya, beli</button>
+            <button onClick={() => decide(true)} disabled={saving || !bolehBeli} title={bolehBeli ? "" : "Lengkapi merek, model, warna, dan tahun dulu"} className="py-3 rounded-xl font-bold text-white bg-emerald-500 active:scale-95 disabled:opacity-50">Ya, beli</button>
             <button onClick={() => decide(false)} disabled={saving} className="py-3 rounded-xl font-bold text-white bg-rose-500 active:scale-95 disabled:opacity-50">Tidak</button>
           </div>
         </Card>
