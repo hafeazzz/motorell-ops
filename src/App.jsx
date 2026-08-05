@@ -183,6 +183,37 @@ async function enablePush(userId) {
 function pushTo(userIds, title, body) {
   try { if (window.storage && window.storage.sendPush && userIds && userIds.length) window.storage.sendPush(userIds, title, body); } catch (e) {}
 }
+/* ============ Verifikasi (permohonan yang perlu disetujui) ============
+   Tabel `verifikasi` — DDL di sql/verifikasi.sql, harus dijalankan sekali di Supabase. */
+const VERIF_TYPES = [
+  { k: "purchase", l: "Pembelian", ph: "cth: beli sparepart buat XSR 155" },
+  { k: "decision", l: "Keputusan bisnis", ph: "cth: turunkan harga jual W175" },
+  { k: "permission", l: "Permintaan akses", ph: "cth: minta akses admin" },
+  { k: "other", l: "Lainnya", ph: "cth: izin pakai motor buat konten" },
+];
+const VERIF_TYPE_LABEL = (k) => (VERIF_TYPES.find((t) => t.k === k) || {}).l || k;
+const VERIF_STATUS = {
+  pending: { l: "Menunggu", c: "amber" },
+  approved: { l: "Disetujui", c: "emerald" },
+  rejected: { l: "Ditolak", c: "rose" },
+  cancelled: { l: "Dibatalkan", c: "slate" },
+};
+/* Siapa boleh memutus, per tipe. Spec menyebut role 'finance' dan 'manager' — keduanya tidak ada
+   di app ini; role yang benar-benar ada cuma owner / admin / staff (lihat state.users). */
+const VERIF_APPROVERS = { purchase: ["owner", "admin"], decision: ["owner", "admin"], permission: ["owner"], other: ["owner", "admin"] };
+function verifCanApprove(me, v) {
+  if (!me || !v || v.status !== "pending") return false;
+  if (!(VERIF_APPROVERS[v.type] || []).includes(me.role)) return false;
+  // Tidak boleh memutus permohonan sendiri. Owner dikecualikan: dia satu-satunya yang boleh
+  // memutus tipe "permission", jadi kalau ikut diblokir permohonannya sendiri tak akan pernah
+  // bisa selesai — mentok tanpa jalan keluar.
+  if (v.requested_by === me.id && me.role !== "owner") return false;
+  return true;
+}
+const verifCanCancel = (me, v) => !!me && !!v && v.status === "pending" && v.requested_by === me.id;
+// Berapa permohonan yang menunggu keputusan SAYA (dipakai badge di header).
+const verifPendingForMe = (rows, me) => (rows || []).filter((v) => verifCanApprove(me, v)).length;
+
 const dayLabel = (ts) => { const d = new Date(ts); const now = new Date(); const strip = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); const diff = Math.round((strip(now) - strip(d)) / 86400000); if (diff === 0) return "Hari ini"; if (diff === 1) return "Kemarin"; return d.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" }); };
 const CATS = {
   service: { label: "Service", icon: Wrench, color: "#f97316", ph: "cth: servis mesin, ganti kampas rem…" },
@@ -529,6 +560,9 @@ function MotorellOps() {
   const [chatOpen, setChatOpen] = useState(false);
   const [handbookOpen, setHandbookOpen] = useState(false);
   const [inspeksiOpen, setInspeksiOpen] = useState(false);
+  const [verifOpen, setVerifOpen] = useState(false);
+  const [verifs, setVerifs] = useState([]);
+  const [verifLoading, setVerifLoading] = useState(true);
   const [focusUnit, setFocusUnit] = useState(null); // buka detail unit di Keuangan dari alur Inspeksi
   const touch = useRef({ x: 0, y: 0 });
   const logoTaps = useRef(0); const logoTimer = useRef(null);
@@ -634,6 +668,22 @@ function MotorellOps() {
     const unsub = window.storage.taskSubscribe(reload);
     return unsub;
   }, []);
+  /* Verifikasi: tabel & realtime sendiri. verifList() balik null kalau GAGAL (mis. tabel belum
+     dibuat — lihat sql/verifikasi.sql); dibedakan dari [] supaya daftar kosong tidak menghapus
+     data yang sudah tampil di layar. */
+  const reloadVerifs = React.useCallback(async () => {
+    if (!window.storage || !window.storage.verifList) { setVerifLoading(false); return; }
+    const r = await window.storage.verifList();
+    if (r) setVerifs(r);
+    setVerifLoading(false);
+  }, []);
+  useEffect(() => { reloadVerifs(); }, [reloadVerifs]);
+  useEffect(() => {
+    if (!window.storage || !window.storage.verifSubscribe) return;
+    const unsub = window.storage.verifSubscribe(reloadVerifs);
+    return unsub;
+  }, [reloadVerifs]);
+
   // Unit motor juga: tabel & realtime sendiri → tambah/edit/status/hapus unit langsung sinkron.
   useEffect(() => {
     if (!window.storage || !window.storage.unitSubscribe) return;
@@ -920,6 +970,14 @@ button:active{transform:scale(.97)}
             <div className="flex items-center gap-2"><img src={LOGO} alt="Motorell" className="h-6 cursor-pointer select-none" onClick={onLogoTap} draggable="false" /></div>
             <div className="flex items-center gap-2 shrink-0">
               <button type="button" onClick={() => setHandbookOpen(true)} aria-label="Handbook" title="Handbook" className="shrink-0 p-2 rounded-xl bg-white/10 ring-1 ring-white/15 grid place-items-center"><BookOpen size={16} strokeWidth={2.4} color="currentColor" /></button>
+              {/* Verifikasi terbuka untuk SEMUA role. Badge cuma menghitung yang menunggu
+                  keputusan SAYA — staff yang tidak berhak memutus tidak dapat angka merah palsu. */}
+              <button type="button" onClick={() => setVerifOpen(true)} aria-label="Verifikasi" title="Verifikasi" className="shrink-0 p-2 rounded-xl bg-white/10 relative">
+                <BadgeCheck size={16} />
+                {verifPendingForMe(verifs, me) > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-[9px] font-bold grid place-items-center">{verifPendingForMe(verifs, me)}</span>
+                )}
+              </button>
               <button type="button" onClick={() => setChatOpen(true)} aria-label="Chat" className="shrink-0 p-2 rounded-xl bg-white/10"><MessageCircle size={16} /></button>
               <button type="button" onClick={toggleDark} aria-label="Ganti tema" className="shrink-0 p-2 rounded-xl bg-white/10">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
               <button type="button" onClick={() => setProfile(true)} aria-label="Profil" className="shrink-0"><Avatar user={me} size={34} /></button>
@@ -962,7 +1020,7 @@ button:active{transform:scale(.97)}
       </nav>
 
       {/* badge inspeksi live — disembunyikan saat halaman full-screen lain lagi kebuka */}
-      {activeInspections.length > 0 && !inspeksiOpen && !chatOpen && !handbookOpen && !monitorOpen && (
+      {activeInspections.length > 0 && !inspeksiOpen && !chatOpen && !handbookOpen && !monitorOpen && !verifOpen && (
         <button onClick={() => setMonitorOpen(true)} className="live-badge" title="Inspeksi sedang berjalan">
           <span className="live-dot" />
           <ClipboardCheck size={16} />
@@ -973,6 +1031,7 @@ button:active{transform:scale(.97)}
 
       <AlarmToast toast={toast} onClose={() => setToast(null)} />
 
+      <VerifikasiPage open={verifOpen} onClose={() => setVerifOpen(false)} state={state} me={me} rows={verifs} reload={reloadVerifs} loading={verifLoading} />
       <ChatPage open={chatOpen} onClose={() => setChatOpen(false)} state={state} me={me} update={update} chatTick={chatTick} />
       <HandbookErrorBoundary onClose={() => setHandbookOpen(false)}>
         <HandbookPage open={handbookOpen} onClose={() => setHandbookOpen(false)} isMgr={isMgr} />
@@ -3296,6 +3355,180 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
       <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
       <input ref={notePhotoRef} type="file" accept="image/*" className="hidden" onChange={onNotePhoto} />
       <Lightbox src={zoom} onClose={() => setZoom("")} />
+    </div>
+  );
+}
+
+/* Halaman Verifikasi: ajukan permohonan, lihat daftar, setujui/tolak. Overlay penuh (bukan tab
+   bottom-nav) supaya semua role bisa membukanya tanpa menambah tab keenam di HP.
+   Sengaja dibuat inline di App.jsx mengikuti pola HandbookPage/InspeksiPage/ChatPage — komponen
+   di file terpisah kehilangan variabel tema kalau tidak di dalam pohon .mr-app. */
+function VerifikasiPage({ open, onClose, state, me, rows, reload, loading }) {
+  const [tab, setTab] = useState("pending");
+  const [openForm, setOpenForm] = useState(false);
+  const KOSONG = { type: "", title: "", description: "", amount: "", justification: "" };
+  const [f, setF] = useState(KOSONG);
+  const [kirim, setKirim] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [putus, setPutus] = useState(null); // { id, status } — form keputusan yang sedang terbuka
+  const [notes, setNotes] = useState("");
+  const [sibuk, setSibuk] = useState(false);
+  const [pesan, setPesan] = useState(null);
+  useEffect(() => { if (!open) { setPutus(null); setDetail(null); setPesan(null); } }, [open]);
+  if (!open) return null;
+
+  const namaUser = (id) => (state.users.find((u) => u.id === id) || {}).name || id || "-";
+  const sah = !!f.type && f.title.trim() !== "" && f.description.trim() !== "";
+  const stat = { pending: 0, approved: 0, rejected: 0, cancelled: 0 };
+  (rows || []).forEach((v) => { if (stat[v.status] !== undefined) stat[v.status]++; });
+  const terlihat = (rows || []).filter((v) => tab === "all" || v.status === tab);
+  const waktu = (ts) => { try { return new Date(ts).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return "-"; } };
+
+  const ajukan = async () => {
+    if (!sah || kirim) return;
+    setKirim(true); setPesan(null);
+    const meta = {};
+    if (f.type === "purchase" && Number(f.amount) > 0) meta.amount = Number(f.amount);
+    if (f.justification.trim()) meta.justification = f.justification.trim();
+    const r = await window.storage.verifAdd({ type: f.type, title: f.title.trim(), description: f.description.trim(), requestedBy: me.id, metadata: meta });
+    setKirim(false);
+    if (!r || !r.ok) { setPesan("Gagal mengajukan permohonan. " + ((r && r.error) || "Cek koneksi lalu ulangi.")); return; }
+    // Kabari yang berhak memutus tipe ini (pengaju sendiri tidak perlu dikabari).
+    const tujuan = (state.users || []).filter((u) => (VERIF_APPROVERS[f.type] || []).includes(u.role) && u.id !== me.id).map((u) => u.id);
+    pushTo(tujuan, "Permohonan verifikasi baru", `${me.name}: ${f.title.trim()}`);
+    setF(KOSONG); setOpenForm(false); setTab("pending"); reload();
+  };
+
+  const putuskan = async (v, status) => {
+    if (sibuk) return;
+    setSibuk(true); setPesan(null);
+    const r = await window.storage.verifDecide(v.id, status, me.id, notes.trim());
+    setSibuk(false);
+    // stale = baris tidak lagi berstatus pending → sudah diputus dari HP lain lebih dulu.
+    if (r && r.stale) { setPesan("Permohonan ini sudah diputus orang lain barusan."); setPutus(null); setNotes(""); reload(); return; }
+    if (!r || !r.ok) { setPesan("Gagal menyimpan keputusan. Cek koneksi lalu ulangi."); return; }
+    if (v.requested_by !== me.id) {
+      pushTo([v.requested_by], status === "approved" ? "Permohonan disetujui ✅" : "Permohonan ditolak ❌", `"${v.title}" — oleh ${me.name}`);
+    }
+    setPutus(null); setNotes(""); reload();
+  };
+
+  const batalkan = async (v) => {
+    if (!window.confirm(`Batalkan permohonan "${v.title}"?`)) return;
+    setSibuk(true); setPesan(null);
+    const r = await window.storage.verifDecide(v.id, "cancelled", me.id, "Dibatalkan oleh pengaju");
+    setSibuk(false);
+    if (r && r.stale) { setPesan("Permohonan ini sudah diputus lebih dulu."); reload(); return; }
+    if (!r || !r.ok) { setPesan("Gagal membatalkan. Cek koneksi lalu ulangi."); return; }
+    reload();
+  };
+
+  const TABS = [["pending", "Menunggu"], ["approved", "Disetujui"], ["rejected", "Ditolak"], ["cancelled", "Dibatalkan"], ["all", "Semua"]];
+  return (
+    <div className="fixed inset-0 z-[56] s-bg flex flex-col max-w-3xl mx-auto an-up">
+      <div className="mr-header text-white px-3 py-2.5 flex items-center gap-2 shrink-0">
+        <button onClick={onClose} className="p-1.5 active:scale-90"><ArrowLeft size={20} /></button>
+        <div className="w-8 h-8 rounded-xl ac-bg grid place-items-center shrink-0"><BadgeCheck size={16} /></div>
+        <div className="min-w-0 flex-1"><p className="font-bold leading-tight">Verifikasi</p><p className="text-[10px] text-slate-400 leading-tight">{stat.pending} menunggu keputusan</p></div>
+        <button onClick={() => { setOpenForm((v) => !v); setPesan(null); }} className="px-3 py-1.5 rounded-xl bg-white/10 text-xs font-bold active:scale-95">{openForm ? "Tutup" : "Ajukan"}</button>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-3">
+        {pesan && (
+          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2">
+            <p className="text-[11px] text-rose-500 font-semibold">{pesan}</p>
+          </div>
+        )}
+
+        {openForm && (
+          <Card className="p-4">
+            <p className="font-bold text-sm mb-2">Ajukan permohonan</p>
+            <Field label="Tipe *">
+              <select className={inputCls} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>
+                <option value="">— Pilih tipe —</option>
+                {VERIF_TYPES.map((t) => <option key={t.k} value={t.k}>{t.l}</option>)}
+              </select>
+            </Field>
+            <Field label="Judul *"><input className={inputCls} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={(VERIF_TYPES.find((t) => t.k === f.type) || {}).ph || "Ringkas, satu baris"} /></Field>
+            <Field label="Deskripsi *"><textarea className={inputCls} rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Jelaskan detailnya" /></Field>
+            {f.type === "purchase" && (
+              <Field label="Jumlah (Rp)"><input type="number" inputMode="numeric" className={inputCls} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="250000" /></Field>
+            )}
+            <Field label="Alasan / justifikasi"><textarea className={inputCls} rows={2} value={f.justification} onChange={(e) => setF({ ...f, justification: e.target.value })} placeholder="Kenapa ini perlu?" /></Field>
+            <Btn onClick={ajukan} disabled={!sah || kirim} className="w-full mt-1">{kirim ? "Mengajukan…" : "Ajukan permohonan"}</Btn>
+            {!sah && <p className="text-[11px] s-muted text-center mt-1.5">Tipe, judul, dan deskripsi wajib diisi.</p>}
+          </Card>
+        )}
+
+        <div className="grid grid-cols-4 gap-1.5">
+          {[["Menunggu", stat.pending, "text-amber-500"], ["Disetujui", stat.approved, "text-emerald-500"], ["Ditolak", stat.rejected, "text-rose-500"], ["Total", (rows || []).length, "s-text"]].map(([l, n, c]) => (
+            <Card key={l} className="p-2.5 text-center"><p className="text-[10px] s-muted">{l}</p><p className={`text-xl font-extrabold leading-tight ${c}`}>{n}</p></Card>
+          ))}
+        </div>
+
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 ${tab === k ? "ac-bg" : "s-soft s-muted"}`}>{l}</button>)}
+        </div>
+
+        {loading && <p className="text-center text-sm s-muted py-8">Memuat…</p>}
+        {!loading && terlihat.length === 0 && <p className="text-center text-sm s-muted py-8">Tidak ada permohonan di sini.</p>}
+
+        {terlihat.map((v) => {
+          const st = VERIF_STATUS[v.status] || { l: v.status, c: "slate" };
+          const buka = detail === v.id;
+          const bolehPutus = verifCanApprove(me, v);
+          const bolehBatal = verifCanCancel(me, v);
+          return (
+            <Card key={v.id} className="p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold break-words">{v.title}</p>
+                  <p className="text-[11px] s-muted mt-0.5">{VERIF_TYPE_LABEL(v.type)} · {namaUser(v.requested_by)} · {waktu(v.requested_at)}</p>
+                </div>
+                <Tag color={st.c}>{st.l}</Tag>
+              </div>
+
+              {buka && (
+                <div className="mt-2 pt-2 border-t s-border space-y-1.5">
+                  <p className="text-xs break-words">{v.description}</p>
+                  {v.metadata && v.metadata.amount ? <p className="text-xs"><span className="s-muted">Jumlah:</span> <b>{rp(v.metadata.amount)}</b></p> : null}
+                  {v.metadata && v.metadata.justification ? <p className="text-xs"><span className="s-muted">Alasan:</span> {v.metadata.justification}</p> : null}
+                  {v.status !== "pending" && (
+                    <p className="text-[11px] s-muted">
+                      Diputus oleh <b className="s-text">{namaUser(v.verified_by)}</b> · {waktu(v.verified_at)}
+                      {v.verification_notes ? <> · catatan: <i>{v.verification_notes}</i></> : null}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {putus && putus.id === v.id ? (
+                <div className={`mt-2 rounded-xl border p-2.5 space-y-2 ${putus.status === "approved" ? "border-emerald-500/40 bg-emerald-500/10" : "border-rose-500/40 bg-rose-500/10"}`}>
+                  <p className="text-[11px] font-semibold">{putus.status === "approved" ? "Setujui" : "Tolak"} permohonan ini?</p>
+                  <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={putus.status === "approved" ? "Catatan persetujuan (opsional)" : "Alasan penolakan (opsional)"} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Btn variant="ghost" onClick={() => { setPutus(null); setNotes(""); }}>Batal</Btn>
+                    <button onClick={() => putuskan(v, putus.status)} disabled={sibuk} className={`px-4 py-2.5 rounded-xl text-sm font-semibold text-white active:scale-[0.97] transition disabled:opacity-50 ${putus.status === "approved" ? "bg-emerald-500" : "bg-rose-500"}`}>
+                      {sibuk ? "Menyimpan…" : putus.status === "approved" ? "Setujui" : "Tolak"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <button onClick={() => setDetail(buka ? null : v.id)} className="text-[11px] font-semibold s-muted underline">{buka ? "Tutup detail" : "Lihat detail"}</button>
+                  {bolehPutus && (
+                    <>
+                      <button onClick={() => { setPutus({ id: v.id, status: "approved" }); setNotes(""); setPesan(null); }} className="ml-auto text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500 text-white active:scale-95">Setujui</button>
+                      <button onClick={() => { setPutus({ id: v.id, status: "rejected" }); setNotes(""); setPesan(null); }} className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-rose-500 text-white active:scale-95">Tolak</button>
+                    </>
+                  )}
+                  {bolehBatal && <button onClick={() => batalkan(v)} disabled={sibuk} className="ml-auto text-[11px] font-semibold s-muted underline disabled:opacity-50">Batalkan</button>}
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -301,6 +301,49 @@ storage.taskSubscribe = (cb) => {
   return () => { try { supabase.removeChannel(channel); } catch (e) {} };
 };
 
+/* ===== VERIFIKASI: permohonan yang perlu disetujui (pembelian, keputusan, akses, dll).
+   Tabel sendiri, pola sama dgn attendance/tasks/units. DDL-nya di sql/verifikasi.sql — harus
+   dijalankan sekali di Supabase SQL Editor sebelum fitur ini bisa dipakai.
+   requested_by/verified_by = id user app (TEXT, mis. "u_own"), bukan UUID auth. ===== */
+const VERIF_TABLE = "verifikasi";
+storage.verifList = async () => {
+  try {
+    const { data, error } = await supabase.from(VERIF_TABLE).select("*").order("requested_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (e) { console.error("verifList error:", e); return null; } // null = GAGAL (beda dari [] kosong)
+};
+storage.verifAdd = async (rec) => {
+  try {
+    const { data, error } = await supabase.from(VERIF_TABLE).insert({
+      type: rec.type, title: rec.title, description: rec.description || "",
+      requested_by: rec.requestedBy, status: "pending", metadata: rec.metadata || {},
+    }).select("*").maybeSingle();
+    if (error) throw error;
+    return { ok: true, row: data || null };
+  } catch (e) { console.error("verifAdd error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+/* Keputusan (approved/rejected/cancelled). Filter `.eq("status","pending")` itu kuncinya:
+   dua HP yang menekan Setujui/Tolak bersamaan tidak saling menimpa — yang kedua tidak kena baris
+   mana pun dan balik { ok:false, stale:true }, jadi layarnya bisa bilang "sudah diputus orang lain"
+   alih-alih diam-diam menindih keputusan pertama. */
+storage.verifDecide = async (id, status, byUserId, notes) => {
+  try {
+    const { data, error } = await supabase.from(VERIF_TABLE)
+      .update({ status, verified_by: byUserId || null, verified_at: new Date().toISOString(), verification_notes: notes || null })
+      .eq("id", id).eq("status", "pending").select("*");
+    if (error) throw error;
+    if (!data || !data.length) return { ok: false, stale: true };
+    return { ok: true, row: data[0] };
+  } catch (e) { console.error("verifDecide error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.verifSubscribe = (cb) => {
+  const channel = supabase.channel("verifikasi-stream")
+    .on("postgres_changes", { event: "*", schema: "public", table: VERIF_TABLE }, () => cb())
+    .subscribe();
+  return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+};
+
 /* ===== UNIT MOTOR: tabel terpisah (sama pola dgn attendance/tasks) supaya tambah/edit/status/
    hapus unit tidak saling timpa saat blob kv ditulis ulang. Seluruh objek unit disimpan di kolom
    `data` (JSONB) → tidak ada field yang bisa hilang (termasuk inspectionResult + foto). Reads di
