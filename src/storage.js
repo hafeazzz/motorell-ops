@@ -301,6 +301,45 @@ storage.taskSubscribe = (cb) => {
   return () => { try { supabase.removeChannel(channel); } catch (e) {} };
 };
 
+/* ===== STNK: foto dokumen unit, disimpan di Supabase Storage (bucket "stnk").
+   TIDAK disimpan base64 di dalam baris unit seperti foto motor: payload tabel `units` sudah ~3,9 MB
+   untuk 20 unit, dan seluruhnya ditarik ulang tiap ada perubahan realtime. Menambah satu foto lagi
+   per unit ke JSONB berarti melipatgandakan itu di tiap sinkronisasi — berat di kuota HP.
+
+   Bucket sengaja PRIVATE, diakses lewat signed URL yang kedaluwarsa. STNK memuat nama & alamat
+   pemilik, nomor rangka, dan nomor mesin; bucket publik berarti satu URL bocor = bisa dibuka
+   siapa pun selamanya. Catatan jujur: anon key ikut terkirim di bundle browser, jadi ini bukan
+   perlindungan sungguhan — cuma menghindari tautan permanen yang bisa disebar. Pengamanan
+   sebenarnya butuh Supabase Auth + RLS per user. ===== */
+const STNK_BUCKET = "stnk";
+const STNK_URL_TTL = 3600; // detik
+storage.stnkUpload = async (unitId, blob, ext) => {
+  try {
+    if (!unitId || !blob) return { ok: false, error: "unitId/berkas kosong" };
+    // Nama acak, bukan timestamp+nama asli: menghindari nama objek yang gampang ditebak.
+    const path = `${unitId}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}.${ext || "jpg"}`;
+    const { error } = await supabase.storage.from(STNK_BUCKET).upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+    if (error) throw error;
+    return { ok: true, path };
+  } catch (e) { console.error("stnkUpload error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+storage.stnkSignedUrl = async (path) => {
+  try {
+    if (!path) return null;
+    const { data, error } = await supabase.storage.from(STNK_BUCKET).createSignedUrl(path, STNK_URL_TTL);
+    if (error) throw error;
+    return (data && data.signedUrl) || null;
+  } catch (e) { console.error("stnkSignedUrl error:", e); return null; }
+};
+storage.stnkDelete = async (path) => {
+  try {
+    if (!path) return { ok: true };
+    const { error } = await supabase.storage.from(STNK_BUCKET).remove([path]);
+    if (error) throw error;
+    return { ok: true };
+  } catch (e) { console.error("stnkDelete error:", e); return { ok: false, error: String((e && e.message) || e) }; }
+};
+
 /* ===== VERIFIKASI: permohonan yang perlu disetujui (pembelian, keputusan, akses, dll).
    Tabel sendiri, pola sama dgn attendance/tasks/units. DDL-nya di sql/verifikasi.sql — harus
    dijalankan sekali di Supabase SQL Editor sebelum fitur ini bisa dipakai.
