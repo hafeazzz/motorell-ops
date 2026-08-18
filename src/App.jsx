@@ -266,7 +266,7 @@ const seed = () => ({
 // Default field unit — dipakai normalize() DAN saat load unit dari tabel `units`, supaya unit lama
 // yang belum punya field tertentu tetap terisi. `...u` di akhir menjaga SEMUA field asli (termasuk
 // inspectionResult & foto) — tidak ada yang hilang.
-const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, soldBy: null, soldAtPrev: null, brand: "", model: "", color: "", year: "", stnkPath: null, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
+const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, soldBy: null, soldAtPrev: null, brand: "", model: "", color: "", year: "", stnkPath: null, dp: 0, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
 
 function normalize(s) {
   const arr = (x, d) => (Array.isArray(x) ? x : d);
@@ -337,7 +337,8 @@ async function loadState() {
   } catch (e) {}
   return base;
 }
-async function saveState(s) { try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} }
+let lastSaveAt = 0; // dipakai penyegaran saat tab aktif, biar tidak menimpa tulisan sendiri
+async function saveState(s) { lastSaveAt = Date.now(); try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} }
 
 // Hapus foto absen & bukti live yang lebih tua dari PHOTO_TTL_DAYS hari (catatannya tetap disimpan).
 const PHOTO_TTL_DAYS = 2;
@@ -653,6 +654,24 @@ function MotorellOps() {
     if (!window.storage || !window.storage.subscribe) return;
     const unsub = window.storage.subscribe(STORE_KEY, () => { loadState().then((s) => { setState(s); setMe((m) => (m ? (s.users.find((u) => u.id === m.id) || m) : m)); }); });
     return unsub;
+  }, []);
+  /* Tarik ulang state tiap tab kembali aktif.
+     KENAPA: pengeluaran (termasuk pajak) masih ikut blob kv — beda dari absensi/task/unit yang
+     sudah punya tabel sendiri justru supaya "tidak ketimpa saat blob kv ditulis ulang". update()
+     menulis SELURUH blob dari state di memori. Kalau HP di-background, WebSocket realtime-nya mati
+     dan state di memori jadi basi; begitu dibuka lagi, perubahan apa pun menulis balik blob basi
+     itu — dan entri yang sudah dihapus di HP lain HIDUP KEMBALI. Itu sebabnya rincian pajak yang
+     dihapus muncul lagi belakangan. Ini menutup jalur utamanya; obat tuntasnya tetap memindahkan
+     expenses ke tabel sendiri (lihat MIGRATION_GUIDE.md). */
+  useEffect(() => {
+    const segarkan = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastSaveAt < 2000) return; // tulisan sendiri baru jalan, jangan balapan
+      loadState().then((s) => { setState(s); setMe((m) => (m ? (s.users.find((u) => u.id === m.id) || m) : m)); }).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", segarkan);
+    window.addEventListener("focus", segarkan);
+    return () => { document.removeEventListener("visibilitychange", segarkan); window.removeEventListener("focus", segarkan); };
   }, []);
   // Absensi punya tabel & realtime sendiri: update HP lain langsung nyambung tanpa reload penuh.
   useEffect(() => {
@@ -1620,7 +1639,7 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
   // `visible` yang sudah menyembunyikan terjual bulan lalu). Riwayat lengkap + grouping per bulan
   // ada di tab Arsip.
   const filtered = sortUnits(visible.filter((u) => (fs === "all" || u.status === fs) && (q.trim() === "" || (u.name + " " + (u.plate || "")).toLowerCase().includes(q.trim().toLowerCase()))), sortDir);
-  const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "terjual", l: "Terjual" }];
+  const FILTERS = [{ k: "all", l: "Semua" }, { k: "proses", l: "Proses" }, { k: "siap", l: "Siap" }, { k: "ter_dp", l: "Ter DP" }, { k: "terjual", l: "Terjual" }];
   const sortKeterangan = fs === "terjual" ? "tanggal keluar" : fs === "all" ? "tgl keluar (terjual) / tgl masuk" : "tanggal masuk";
   return (
     <div className="space-y-3 pt-3">
@@ -1649,7 +1668,10 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
           <Card key={u.id} className="p-4">
             <div className="flex items-start justify-between" onClick={() => setDetail(u.id)}>
               <div><p className="font-bold">{u.name}</p><p className="text-xs s-muted">{u.plate}{u.investorCode ? ` · Kode ${u.investorCode}` : ""}</p><p className="text-[11px] s-muted flex items-center gap-1 mt-0.5"><Gauge size={12} className="shrink-0" />{u.odometer ? `${(+u.odometer).toLocaleString("id-ID")} km` : <span className="italic opacity-70">odometer belum diisi</span>}</p><p className="text-[11px] s-muted flex items-center gap-1 mt-0.5"><CalendarDays size={12} className="shrink-0" />{sortDateOf(u) ? `${u.status === "terjual" ? "Keluar" : "Masuk"} ${tglPendek(sortDateOf(u))}` : <span className="italic opacity-70">{u.status === "terjual" ? "tanggal keluar belum diisi" : "tanggal masuk belum diisi"}</span>}</p></div>
-              <Tag color={u.status === "terjual" ? "emerald" : u.status === "siap" ? "blue" : "amber"}>{u.status === "terjual" ? "Terjual" : u.status === "siap" ? "Siap jual" : "Proses"}</Tag>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Tag color={statusMeta(u.status).c}>{statusMeta(u.status).l}</Tag>
+                {u.status === "ter_dp" && u.dp > 0 && <span className="text-[10px] font-bold tg-purple px-2 py-0.5 rounded-lg whitespace-nowrap">DP {rp(u.dp)}</span>}
+              </div>
             </div>
             {u.photo ? (
               <img src={u.photo} onClick={() => setZoomU(u.photo)} className="w-full aspect-square object-cover rounded-xl mt-3 cursor-zoom-in" alt="" />
@@ -1753,6 +1775,21 @@ function DateBox({ label, value, onChange }) {
 // Dipakai semua jalur pembuatan unit (form manual & alur Inspeksi) supaya konsisten.
 // Bangun objek unit (murni, tanpa efek samping). Unit disimpan ke tabel `units` via unitOps.add;
 // pengeluaran default "Cek unit" tetap di blob (expenses) via update() biasa.
+/* ============ Status unit ============
+   "ter_dp" = sudah di-DP (booked), belum lunas. Disimpan di JSONB unit seperti field lain →
+   TIDAK perlu ALTER TABLE: tabel `units` cuma punya kolom id/data/status/updated_at, seluruh isi
+   unit ada di `data`. Menambah kolom nominal_dp di Postgres tidak akan pernah dibaca app. */
+const STATUS_META = {
+  proses: { l: "Proses", c: "amber" },
+  siap: { l: "Siap jual", c: "blue" },
+  ter_dp: { l: "Ter DP", c: "purple" },
+  terjual: { l: "Terjual", c: "emerald" },
+};
+const statusMeta = (s) => STATUS_META[s] || { l: s || "-", c: "slate" };
+const DP_MIN = 100000;
+const DP_PRESETS = [{ l: "500 Ribu", v: 500000 }, { l: "1 Juta", v: 1000000 }];
+const dpValid = (n) => Number.isInteger(Number(n)) && Number(n) >= DP_MIN;
+
 /* ============ Foto STNK (wajib saat unit dibuat) ============ */
 const STNK_MAX_MB = 5;
 /* Divalidasi lalu dikompres 1600px/0.8 — jauh lebih besar & bening daripada foto motor biasa
@@ -2010,14 +2047,19 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
   const userName = (id) => state.users.find((u) => u.id === id)?.name || "?";
   const [confirmDel, setConfirmDel] = useState(false);
   const [confirmUnsell, setConfirmUnsell] = useState(null); // status tujuan saat batal jual
+  const [dpForm, setDpForm] = useState(null); // { pilih: nominal | "custom", custom: "" }
   const [zoom, setZoom] = useState("");
-  useEffect(() => { setConfirmDel(false); setConfirmUnsell(null); }, [unitId]);
+  useEffect(() => { setConfirmDel(false); setConfirmUnsell(null); setDpForm(null); }, [unitId]);
   // Edit unit → tabel `units` (row-level, anti-tabrakan). Expense unit tetap di blob.
   const setField = (k, v) => unitOps.update(unitId, (u) => { u[k] = v; return u; });
-  const applyStatus = (status) => {
+  const applyStatus = (status, dp) => {
     const wasSold = unit.status === "terjual";
     unitOps.update(unitId, (u) => {
       u.status = status;
+      // Nominal DP cuma relevan selama status ter_dp; begitu pindah status, dikosongkan supaya
+      // tidak ada angka DP menggantung di unit yang sudah lunas / balik ke proses.
+      if (status === "ter_dp") u.dp = Number(dp) || 0;
+      else u.dp = 0;
       // Audit: catat siapa yang menandai terjual (sekali, tidak ditimpa). Dikosongkan kalau un-sold.
       if (status === "terjual") {
         // Pulihkan tanggal terakhir kalau ada — jadi batal-jual lalu jual lagi tidak kehilangan
@@ -2031,13 +2073,15 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       }
       return u;
     });
-    setConfirmUnsell(null);
+    setConfirmUnsell(null); setDpForm(null);
     if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
   };
   // Batal jual menghapus tanggal terjual → unit langsung lenyap dari hitungan bulan itu. Dulu ini
   // terjadi tanpa peringatan sama sekali, jadi sekarang wajib dikonfirmasi dulu.
   const setStatus = (status) => {
     if (unit.status === "terjual" && status !== "terjual" && unit.soldAt) { setConfirmUnsell(status); return; }
+    // Ter DP harus disertai nominal → tanya dulu, jangan simpan status tanpa angkanya.
+    if (status === "ter_dp") { setDpForm({ pilih: unit.dp || DP_PRESETS[0].v, custom: "" }); return; }
     applyStatus(status);
   };
   const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
@@ -2091,7 +2135,37 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
         )}
         <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
       </div>
-      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span><div className="flex gap-2">{[["proses", "Proses"], ["siap", "Siap jual"], ["terjual", "Terjual"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} className={`flex-1 py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "ac-border ac-soft" : "s-border s-muted"}`}>{l}</button>)}</div>
+      <div className="mb-4"><span className="text-xs font-semibold s-muted mb-1 block">Status unit</span>
+        {/* 4 status: di HP 3 tombol sebaris jadi terlalu sempit, jadi dibikin 2x2. */}
+        <div className="grid grid-cols-2 gap-2">{["proses", "siap", "ter_dp", "terjual"].map((k) => <button key={k} onClick={() => setStatus(k)} className={`py-2 rounded-xl text-xs font-semibold border ${unit.status === k ? "ac-border ac-soft" : "s-border s-muted"}`}>{statusMeta(k).l}</button>)}</div>
+        {unit.status === "ter_dp" && unit.dp > 0 && !dpForm && (
+          <div className="flex items-center gap-2 mt-2">
+            <Tag color="purple">DP {rp(unit.dp)}</Tag>
+            <button onClick={() => setDpForm({ pilih: unit.dp, custom: "" })} className="text-[11px] font-semibold s-muted underline">Ubah nominal</button>
+          </div>
+        )}
+        {dpForm && (() => {
+          const nominal = dpForm.pilih === "custom" ? Number(dpForm.custom) : Number(dpForm.pilih);
+          const ok = dpValid(nominal);
+          return (
+            <div className="mt-2 rounded-xl border s-border s-soft p-3 space-y-2">
+              <p className="text-[11px] font-semibold">Nominal DP yang diterima</p>
+              <div className="grid grid-cols-3 gap-2">
+                {DP_PRESETS.map((p) => <button key={p.v} onClick={() => setDpForm({ pilih: p.v, custom: "" })} className={`py-2 rounded-xl text-xs font-semibold border ${dpForm.pilih === p.v ? "ac-border ac-soft" : "s-border s-muted"}`}>{p.l}</button>)}
+                <button onClick={() => setDpForm({ pilih: "custom", custom: dpForm.custom })} className={`py-2 rounded-xl text-xs font-semibold border ${dpForm.pilih === "custom" ? "ac-border ac-soft" : "s-border s-muted"}`}>Kustom</button>
+              </div>
+              {dpForm.pilih === "custom" && (
+                <input type="number" inputMode="numeric" min={DP_MIN} className={inputCls} value={dpForm.custom} onChange={(e) => setDpForm({ ...dpForm, custom: e.target.value })} placeholder={`Minimal ${rp(DP_MIN)}`} autoFocus />
+              )}
+              {ok && <p className="text-[11px] s-muted">DP tercatat: <b className="s-text">{rp(nominal)}</b></p>}
+              <div className="grid grid-cols-2 gap-2">
+                <Btn variant="ghost" onClick={() => setDpForm(null)}>Batal</Btn>
+                <Btn onClick={() => applyStatus("ter_dp", nominal)} disabled={!ok}>Simpan DP</Btn>
+              </div>
+              {!ok && <p className="text-[11px] s-muted text-center">Nominal harus angka bulat, minimal {rp(DP_MIN)}.</p>}
+            </div>
+          );
+        })()}
         {confirmUnsell && (
           <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
             <p className="text-[11px] leading-relaxed">Batalkan penjualan <b>{unit.name}</b>? Tanggal terjual <b>{unit.soldAt}</b> akan dihapus dan unit ini <b>hilang dari laporan bulan itu</b>. Tanggalnya diingat, jadi kalau ditandai terjual lagi otomatis balik.</p>
