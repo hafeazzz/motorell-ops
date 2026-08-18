@@ -266,7 +266,7 @@ const seed = () => ({
 // Default field unit — dipakai normalize() DAN saat load unit dari tabel `units`, supaya unit lama
 // yang belum punya field tertentu tetap terisi. `...u` di akhir menjaga SEMUA field asli (termasuk
 // inspectionResult & foto) — tidak ada yang hilang.
-const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, soldBy: null, soldAtPrev: null, brand: "", model: "", color: "", year: "", stnkPath: null, dp: 0, inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
+const withUnitDefaults = (u) => ({ investorCode: "", investorShare: 0, soldAt: null, soldBy: null, soldAtPrev: null, brand: "", model: "", color: "", year: "", stnkPath: null, dp: 0, investors: [], inDate: "", odometer: 0, sellPrice: 0, buyPrice: 0, status: "proses", photo: "", ...u });
 
 function normalize(s) {
   const arr = (x, d) => (Array.isArray(x) ? x : d);
@@ -1671,6 +1671,7 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <Tag color={statusMeta(u.status).c}>{statusMeta(u.status).l}</Tag>
                 {u.status === "ter_dp" && u.dp > 0 && <span className="text-[10px] font-bold tg-purple px-2 py-0.5 rounded-lg whitespace-nowrap">DP {rp(u.dp)}</span>}
+                {(u.investors || []).length > 0 && <span className="text-[10px] font-bold tg-slate px-2 py-0.5 rounded-lg whitespace-nowrap" title={(u.investors || []).map((x) => `${x.name}: ${rp(x.amount)}`).join(" · ")}>{u.investors.length} investor · {rp(investorsTotal(u.investors))}</span>}
               </div>
             </div>
             {u.photo ? (
@@ -1790,6 +1791,65 @@ const DP_MIN = 100000;
 const DP_PRESETS = [{ l: "500 Ribu", v: 500000 }, { l: "1 Juta", v: 1000000 }];
 const dpValid = (n) => Number.isInteger(Number(n)) && Number(n) >= DP_MIN;
 
+/* ============ Investor per unit (nama + nominal setoran) ============
+   Disimpan sebagai u.investors = [{ name, amount }] di JSONB unit → tanpa ALTER TABLE.
+
+   CATATAN PENTING: daftar ini bersifat CATATAN, bukan dasar hitungan. Bagi hasil tetap memakai
+   satu field u.investorShare (%) seperti sebelumnya — unitProfit/estimateProfit/Arsip tidak
+   disentuh sama sekali, jadi tidak ada angka profit lama yang bergeser. Selama ini beberapa
+   investor terpaksa dijejalkan ke satu kolom teks `investorCode` ("M2+M", "8II+M 3JT"); daftar ini
+   menggantikan kebiasaan itu, sementara investorCode tetap dipakai untuk bagi hasil. */
+const INVESTOR_MIN = 100000;
+const investorAmountValid = (n) => String(n).trim() !== "" && Number.isInteger(Number(n)) && Number(n) >= INVESTOR_MIN;
+const investorInputValid = (f) => String((f && f.name) || "").trim() !== "" && investorAmountValid((f && f.amount) || "");
+const investorsTotal = (arr) => (arr || []).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+const investorDup = (arr, name) => (arr || []).some((x) => String(x.name || "").trim().toLowerCase() === String(name || "").trim().toLowerCase());
+
+function InvestorEditor({ value, onChange, wajib = true }) {
+  const list = value || [];
+  const [f, setF] = useState({ name: "", amount: "" });
+  const [msg, setMsg] = useState("");
+  const sah = investorInputValid(f);
+  const tambah = () => {
+    if (!sah) return;
+    if (investorDup(list, f.name)) { setMsg(`Investor "${f.name.trim()}" sudah ada di daftar.`); return; }
+    onChange([...list, { name: f.name.trim(), amount: Number(f.amount) }]);
+    setF({ name: "", amount: "" }); setMsg("");
+  };
+  return (
+    <div className="mb-3">
+      <span className="text-xs font-semibold s-muted mb-1 block">{wajib ? <><span className="text-rose-500">*</span> Investor (wajib, minimal 1)</> : "Investor"}</span>
+      {/* Di HP menumpuk 1 kolom; mulai layar sedang nama+nominal sebaris. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input className={inputCls} value={f.name} onChange={(e) => { setF({ ...f, name: e.target.value }); setMsg(""); }} placeholder="Nama investor (cth: m2)" />
+        <input type="number" inputMode="numeric" min={INVESTOR_MIN} className={inputCls} value={f.amount} onChange={(e) => { setF({ ...f, amount: e.target.value }); setMsg(""); }} placeholder={`Nominal (min ${rp(INVESTOR_MIN)})`} />
+      </div>
+      <Btn variant="ghost" onClick={tambah} disabled={!sah} className="w-full mt-1.5"><Plus size={14} className="inline mr-1 -mt-0.5" />Tambah investor</Btn>
+      {msg && <p className="text-[11px] text-rose-500 font-semibold mt-1.5">{msg}</p>}
+      {!msg && f.name.trim() && !investorAmountValid(f.amount) && <p className="text-[11px] s-muted mt-1.5">Isi nominalnya juga — minimal {rp(INVESTOR_MIN)}, angka bulat.</p>}
+      {!msg && !f.name.trim() && String(f.amount).trim() !== "" && <p className="text-[11px] s-muted mt-1.5">Isi nama investornya juga.</p>}
+
+      {list.length === 0 ? (
+        <p className="text-[11px] s-muted mt-2">{wajib ? "Belum ada investor. Minimal 1 investor harus ditambahkan." : "Belum ada investor."}</p>
+      ) : (
+        <div className="mt-2 space-y-1.5">
+          {list.map((inv, i) => (
+            <div key={i} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">
+              <span className="text-sm font-semibold truncate flex-1 min-w-0">{inv.name}</span>
+              <span className="text-sm font-bold shrink-0">{rp(inv.amount)}</span>
+              <button type="button" onClick={() => onChange(list.filter((_, k) => k !== i))} title={`Hapus ${inv.name}`} className="shrink-0 w-6 h-6 grid place-items-center rounded-md text-rose-500 active:scale-90"><X size={13} /></button>
+            </div>
+          ))}
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl ac-soft">
+            <span className="text-xs font-bold">Total investasi</span>
+            <span className="text-sm font-extrabold">{rp(investorsTotal(list))}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============ Foto STNK (wajib saat unit dibuat) ============ */
 const STNK_MAX_MB = 5;
 /* Divalidasi lalu dikompres 1600px/0.8 — jauh lebih besar & bening daripada foto motor biasa
@@ -1879,18 +1939,19 @@ function buildUnit(data, presetId) {
     id: presetId || uid(), name: composed || data.name || "Motor baru", ...p, stnkPath: data.stnkPath || null, plate: data.plate || "",
     buyPrice: +data.buyPrice || 0, sellPrice: +data.sellPrice || 0,
     status: data.status || "proses", investorCode: (data.investorCode || "").trim(),
+    investors: Array.isArray(data.investors) ? data.investors : [],
     inDate: data.inDate || today(), soldAt: null, odometer: +data.odometer || 0,
     ...(data.inspectionResult ? { inspectionResult: data.inspectionResult } : {}),
   };
 }
 const defaultUnitExpense = (unitId, byId) => ({ id: uid(), unitId, cat: "jasa", amount: 250000, note: "Cek unit", by: byId || null, date: today() });
 function AddUnitModal({ open, onClose, update, unitOps, me }) {
-  const kosong = { brand: "", model: "", color: "", year: "", stnk: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" };
+  const kosong = { brand: "", model: "", color: "", year: "", stnk: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", investors: [], inDate: today(), odometer: "" };
   const [f, setF] = useState(kosong);
   const [simpan, setSimpan] = useState(false);
   const [gagal, setGagal] = useState("");
   const [zoom, setZoom] = useState("");
-  const sah = unitPartsValid(f) && !!f.stnk;
+  const sah = unitPartsValid(f) && !!f.stnk && (f.investors || []).length > 0;
   /* Foto STNK diunggah DULU; unitnya baru dibuat kalau unggahan berhasil. Kalau urutannya dibalik,
      unggahan yang gagal menyisakan unit tanpa STNK — padahal STNK-nya wajib. */
   const save = async () => {
@@ -1921,10 +1982,11 @@ function AddUnitModal({ open, onClose, update, unitOps, me }) {
       <Field label="Plat nomor"><input className={inputCls} value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="B 1234 XYZ" /></Field>
       <DateBox label="Tanggal masuk" value={f.inDate} onChange={(v) => setF({ ...f, inDate: v })} />
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
-      <div className="grid grid-cols-2 gap-2"><Field label="Kode investor (opsional)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} value={f.odometer} onChange={(e) => setF({ ...f, odometer: e.target.value })} placeholder="cth: 5000" /></Field></div>
+      <InvestorEditor value={f.investors} onChange={(v) => setF({ ...f, investors: v })} />
+      <div className="grid grid-cols-2 gap-2"><Field label="Kode investor (bagi hasil)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} value={f.odometer} onChange={(e) => setF({ ...f, odometer: e.target.value })} placeholder="cth: 5000" /></Field></div>
       <Btn onClick={save} disabled={!sah || simpan} className="w-full mt-2">{simpan ? "Menyimpan…" : "Simpan unit"}</Btn>
       {gagal && <p className="text-[11px] text-rose-500 font-semibold text-center mt-1.5">{gagal}</p>}
-      {!sah && <p className="text-[11px] s-muted text-center mt-1.5">Lengkapi merek, model, warna, tahun ({UNIT_YEAR_MIN}–{unitYearMax()}), dan foto STNK dulu.</p>}
+      {!sah && <p className="text-[11px] s-muted text-center mt-1.5">Lengkapi merek, model, warna, tahun ({UNIT_YEAR_MIN}–{unitYearMax()}), foto STNK, dan minimal 1 investor dulu.</p>}
       <Lightbox src={zoom} onClose={() => setZoom("")} />
     </Modal>
   );
@@ -2107,6 +2169,8 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       })()}
       <Field label="Nama motor"><input className={inputCls} defaultValue={unit.name} onBlur={(e) => setField("name", e.target.value)} /></Field>
       <StnkView unit={unit} onZoom={setZoom} onReplace={(path) => setField("stnkPath", path)} />
+      {/* wajib=false di sini: 22 unit lama belum punya daftar investor, jangan diteriaki. */}
+      <InvestorEditor value={unit.investors || []} onChange={(v) => setField("investors", v)} wajib={false} />
       <Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><DateBox label="Tanggal masuk" value={unit.inDate} onChange={(v) => setField("inDate", v)} /><DateBox label="Tanggal keluar (terjual)" value={unit.soldAt} onChange={(v) => setField("soldAt", v || null)} /></div>
@@ -3370,10 +3434,11 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
   const PARTS_KOSONG = { brand: "", model: "", color: "", year: "" };
   const [parts, setParts] = useState(PARTS_KOSONG);
   const [stnk, setStnk] = useState(""); // data-URL, diunggah saat keputusan "Ya, beli"
+  const [investors, setInvestors] = useState([]);
   const name = unitNameFrom(parts); // nama gabungan, dipakai draft + riwayat inspeksi
-  // STNK ikut wajib di sini: jalur ini juga membuat unit, kalau tidak dikunci dia jadi pintu
-  // belakang untuk membuat unit tanpa STNK.
-  const bolehBeli = unitPartsValid(parts) && !!stnk;
+  // STNK & investor ikut wajib di sini: jalur ini juga membuat unit, kalau tidak dikunci dia jadi
+  // pintu belakang untuk membuat unit tanpa STNK / tanpa investor.
+  const bolehBeli = unitPartsValid(parts) && !!stnk && investors.length > 0;
   const [items, setItems] = useState({});
   const [notes, setNotes] = useState("");
   const [notePhotos, setNotePhotos] = useState([]);
@@ -3397,7 +3462,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
       catch (e) { if (!e || e.name !== "QuotaExceededError") { console.error("saveLocalDraft:", e); return; } }
     }
   };
-  const reset = () => { setParts(PARTS_KOSONG); setStnk(""); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); clearLocalDraft(); };
+  const reset = () => { setParts(PARTS_KOSONG); setStnk(""); setInvestors([]); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); clearLocalDraft(); };
   // ts = kapan item ini terakhir di-set — dipakai monitoring live & tampilan detail arsip.
   const setStatus = (key, st) => setItems((p) => {
     const cur = p[key] || {};
@@ -3479,7 +3544,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
     // STNK diunggah dulu; kalau gagal, unit TIDAK jadi dibuat dan inspeksi tetap utuh di layar.
     const up = await window.storage.stnkUpload(newId, dataUrlToBlob(stnk), "jpg");
     if (!up || !up.ok) { setSaving(false); alert("Gagal mengunggah foto STNK. " + ((up && up.error) || "Cek koneksi lalu ulangi.")); return; }
-    const u = buildUnit({ ...parts, stnkPath: up.path, inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, newId);
+    const u = buildUnit({ ...parts, stnkPath: up.path, investors, inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, newId);
     unitOps.add(u); // unit → tabel `units`
     update((s) => { s.expenses.push(defaultUnitExpense(newId, me.id)); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; }); // expense + inspeksi → blob
     setSaving(false); reset(); onClose();
@@ -3507,6 +3572,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
           {name ? <>Nama unit: <b className="s-text">{name}</b></> : "Wajib diisi kalau motornya jadi dibeli."}
         </p>
         <StnkPicker value={stnk} onChange={setStnk} onZoom={setZoom} />
+        <InvestorEditor value={investors} onChange={setInvestors} />
         {INSPEKSI_SECTIONS.map((sec) => {
           const op = openSec === sec.key; const cc = checkedCount(sec);
           return (
