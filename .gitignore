@@ -3,4 +3,9 @@ dist
 dist-ssr
 .vercel
 *.local
+.env
 .DS_Store
+
+# Hasil ekspor Supabase: data operasional asli (foto base64, data pribadi di STNK).
+# Struktur foldernya tetap ikut, isinya tidak.
+data-export/*.json
