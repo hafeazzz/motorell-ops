@@ -1154,8 +1154,16 @@ function Auth({ state, onLogin, update }) {
   const back = () => { setSel(null); setPw(""); setPw2(""); setErr(""); setLupa(null); setJwb(""); setSisa(LUPA_MAX); };
   const batalLupa = () => { setLupa(null); setJwb(""); setPw(""); setPw2(""); setErr(""); };
   const firstTime = sel && (sel.role === "staff" || sel.role === "admin") && !sel.password;
-  // Owner tidak ikut: dia punya OWNER_PW sebagai cadangan, jadi tak mungkin terkunci.
-  const bolehLupa = !!sel && sel.role !== "owner" && !firstTime && !!sel.securityA;
+  /* Tombolnya SELALU muncul buat non-owner. Versi sebelumnya cuma memunculkan kalau
+     sel.securityA sudah diisi — itu jebakan: satu-satunya tempat mengatur pertanyaan keamanan
+     ada di Profil, yang cuma bisa dibuka SETELAH login. Persis kondisi orang yang lupa password.
+     Owner tetap tidak ikut: OWNER_PW jadi cadangan permanen, jadi tak mungkin terkunci. */
+  const bolehLupa = !!sel && sel.role !== "owner" && !firstTime;
+  /* Yang belum punya pertanyaan keamanan diverifikasi pakai PASSWORD OWNER. Ini menyalin proses
+     yang selama ini memang dipakai ("minta owner reset lewat menu Tim"), bedanya owner cukup
+     mengetik passwordnya langsung di HP yang bersangkutan — tidak perlu login di HP-nya sendiri.
+     Tetap ada yang diverifikasi, bukan pintu terbuka. */
+  const punyaQ = !!(sel && sel.securityA);
   const submit = () => {
     if (sel.role === "owner") { (pw === OWNER_PW || (sel.password && pw === sel.password)) ? onLogin(sel) : setErr("Password salah."); return; }
     if (firstTime) {
@@ -1166,11 +1174,13 @@ function Auth({ state, onLogin, update }) {
     } else { pw === sel.password ? onLogin(sel) : setErr("Password salah."); }
   };
   const cekJawab = () => {
-    if (normAnswer(jwb) !== normAnswer(sel.securityA)) {
+    const benar = punyaQ ? normAnswer(jwb) === normAnswer(sel.securityA) : jwb === OWNER_PW;
+    if (!benar) {
       const sisaBaru = sisa - 1;
+      const apa = punyaQ ? "Jawaban" : "Password owner";
       setSisa(sisaBaru); setJwb("");
-      if (sisaBaru <= 0) { setLupa(null); setErr(`Jawaban salah ${LUPA_MAX}×. Minta owner reset lewat menu Tim.`); }
-      else setErr(`Jawaban salah. Sisa ${sisaBaru}× percobaan.`);
+      if (sisaBaru <= 0) { setLupa(null); setErr(`${apa} salah ${LUPA_MAX}×. Minta owner reset lewat menu Tim.`); }
+      else setErr(`${apa} salah. Sisa ${sisaBaru}× percobaan.`);
       return;
     }
     setErr(""); setJwb(""); setLupa("baru");
@@ -1211,8 +1221,15 @@ function Auth({ state, onLogin, update }) {
             {/* ── Langkah 1 lupa password: jawab pertanyaan keamanan ── */}
             {lupa === "tanya" && (
               <>
-                <p className="text-xs text-slate-300 mb-3 bg-white/5 rounded-xl px-3 py-2.5"><span className="text-slate-500 block mb-0.5">Pertanyaan keamanan kamu</span>{sel.securityQ}</p>
-                <div className="relative mb-3"><HelpCircle size={16} className="absolute left-3 top-3.5 text-slate-500" /><input value={jwb} onChange={(e) => { setJwb(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && cekJawab()} placeholder="Jawaban kamu" autoFocus className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>
+                {punyaQ ? (
+                  <p className="text-xs text-slate-300 mb-3 bg-white/5 rounded-xl px-3 py-2.5"><span className="text-slate-500 block mb-0.5">Pertanyaan keamanan kamu</span>{sel.securityQ}</p>
+                ) : (
+                  <p className="text-xs text-slate-300 mb-3 bg-white/5 rounded-xl px-3 py-2.5"><span className="text-slate-500 block mb-0.5">Belum ada pertanyaan keamanan</span>Minta owner mengetik passwordnya di HP ini buat membuka reset. Setelah masuk, atur pertanyaan keamanan di Profil biar lain kali bisa sendiri.</p>
+                )}
+                <div className="relative mb-3">
+                  {punyaQ ? <HelpCircle size={16} className="absolute left-3 top-3.5 text-slate-500" /> : <Lock size={16} className="absolute left-3 top-3.5 text-slate-500" />}
+                  <input type={punyaQ ? "text" : "password"} value={jwb} onChange={(e) => { setJwb(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && cekJawab()} placeholder={punyaQ ? "Jawaban kamu" : "Password owner"} autoFocus className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" />
+                </div>
                 {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
                 <button onClick={cekJawab} className="w-full py-3 rounded-xl font-bold bg-white text-slate-900 active:scale-[.98] transition">Verifikasi</button>
                 <button onClick={batalLupa} className="w-full text-center text-xs text-slate-500 mt-4">Batal, saya ingat passwordnya</button>
@@ -1237,10 +1254,13 @@ function Auth({ state, onLogin, update }) {
                 {firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>}
                 {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
                 <button onClick={submit} className="w-full py-3 rounded-xl font-bold bg-white text-slate-900 active:scale-[.98] transition">{firstTime ? "Buat & masuk" : "Masuk"}</button>
-                {/* Yang sudah mengatur pertanyaan keamanan bisa reset sendiri; yang belum tetap
-                    diarahkan ke jalur lama (owner reset lewat Tim) — tidak ada jawaban default. */}
-                {bolehLupa && <button onClick={() => { setLupa("tanya"); setPw(""); setPw2(""); setErr(""); }} className="w-full text-center text-xs text-slate-400 underline underline-offset-2 mt-4">Lupa password?</button>}
-                {!bolehLupa && !firstTime && sel.role !== "owner" && <p className="text-center text-xs text-slate-500 mt-4">Lupa password? Minta owner reset lewat menu <b className="text-slate-300">Tim</b>, atau atur pertanyaan keamanan di Profil biar lain kali bisa reset sendiri.</p>}
+                {/* Selalu tampil buat non-owner. Verifikasinya menyesuaikan: pertanyaan keamanan
+                    kalau sudah diatur, kalau belum ya password owner. */}
+                {bolehLupa && (
+                  <button onClick={() => { setLupa("tanya"); setPw(""); setPw2(""); setErr(""); setJwb(""); setSisa(LUPA_MAX); }} className="w-full text-center text-xs text-slate-400 underline underline-offset-2 mt-4">
+                    Lupa password?
+                  </button>
+                )}
               </>
             )}
           </div>
