@@ -6,7 +6,8 @@ import {
   CheckCircle2, ShieldCheck, Camera, Pencil, ArrowLeft, Lock,
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
   MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge,
-  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive, CalendarDays
+  BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive, CalendarDays,
+  HelpCircle
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -114,6 +115,29 @@ function clickSound(e) {
 
 /* ============ Config ============ */
 const OWNER_PW = "@Motorell#";
+
+/* ============ Pertanyaan keamanan (buat reset password sendiri) ============
+   Dipakai Auth (lupa password) dan ProfileModal (tempat mengaturnya).
+
+   JUJUR SOAL BATASNYA — ini fitur KEPRAKTISAN, bukan lapisan keamanan. Seluruh state (termasuk
+   password semua orang dalam teks polos) sudah ditarik dari Supabase memakai anon key SEBELUM
+   siapa pun login, jadi siapa saja yang membuka app bisa membacanya lewat devtools. Jawaban
+   keamanan tersimpan di blob yang sama. Gunanya cuma supaya yang lupa password tidak perlu
+   menunggu owner — bukan menahan orang yang memang berniat jahat.
+
+   Owner sengaja DIKECUALIKAN dari jalur ini: akunnya melihat seluruh angka keuangan, dan dia
+   sudah punya OWNER_PW sebagai jalan masuk cadangan, jadi mustahil terkunci. */
+const SECURITY_QS = [
+  "Nama panggilan kamu waktu kecil?",
+  "Nama hewan peliharaan pertama kamu?",
+  "Motor pertama yang kamu punya?",
+  "Nama jalan rumah kamu waktu kecil?",
+  "Makanan favorit kamu?",
+];
+/* Dinormalkan supaya "Si Belang", "si belang", dan "si  belang" dianggap sama. Jawabannya diketik
+   ulang berbulan-bulan kemudian; menuntut sama persis bikin fiturnya tidak akan kepakai. */
+const normAnswer = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+const LUPA_MAX = 3; // percobaan jawaban sebelum jalur ini ditutup
 /* Tarif bonus penjualan per unit. PENTING: bonus & komisi TIDAK pernah disimpan — keduanya
    dihitung ulang dari state.units tiap kali layar digambar (lihat saleBonusFor & unitProfit).
    Jadi kalau angkanya cuma diganti begitu saja, SEMUA bulan yang sudah lewat ikut berubah:
@@ -283,7 +307,11 @@ function normalize(s) {
     chat: arr(s.chat, []),
     inspections: arr(s.inspections, []),
   };
-  out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
+  /* securityQ/securityA sengaja dibackfill KOSONG, bukan diisi jawaban default seragam:
+     satu jawaban default yang sama untuk semua orang = siapa pun yang tahu kata itu bisa
+     mengambil alih akun siapa pun. Yang belum mengatur pertanyaannya tetap memakai jalur lama
+     (minta owner reset lewat menu Tim) sampai dia mengaturnya sendiri di Profil. */
+  out.users = out.users.map((u) => ({ avatar: "", saleBonus: false, securityQ: "", securityA: "", ...(u.role === "owner" ? {} : { password: "" }), ...u, ...(u.id === "u_omen" || u.id === "u_beceng" ? { saleBonus: true } : {}) }));
   out.units = out.units.map(withUnitDefaults);
   out.media = out.media.map((m) => ({ category: "ADS", verified: false, note: "", date: "", ...m }));
   out._sbFix = s._sbFix === true;
@@ -1118,8 +1146,16 @@ function EmberField() { return null; // eslint-disable-line
 function Auth({ state, onLogin, update }) {
   const [sel, setSel] = useState(null);
   const [pw, setPw] = useState(""); const [pw2, setPw2] = useState(""); const [err, setErr] = useState("");
-  const back = () => { setSel(null); setPw(""); setPw2(""); setErr(""); };
+  /* Alur lupa password cuma 2 langkah, bukan 3: akunnya SUDAH dipilih di layar sebelumnya
+     (login di sini = pilih orang lalu isi password, tidak ada kolom username), jadi langkah
+     "masukkan username" tidak ada gunanya. lupa = null | "tanya" | "baru". */
+  const [lupa, setLupa] = useState(null);
+  const [jwb, setJwb] = useState(""); const [sisa, setSisa] = useState(LUPA_MAX);
+  const back = () => { setSel(null); setPw(""); setPw2(""); setErr(""); setLupa(null); setJwb(""); setSisa(LUPA_MAX); };
+  const batalLupa = () => { setLupa(null); setJwb(""); setPw(""); setPw2(""); setErr(""); };
   const firstTime = sel && (sel.role === "staff" || sel.role === "admin") && !sel.password;
+  // Owner tidak ikut: dia punya OWNER_PW sebagai cadangan, jadi tak mungkin terkunci.
+  const bolehLupa = !!sel && sel.role !== "owner" && !firstTime && !!sel.securityA;
   const submit = () => {
     if (sel.role === "owner") { (pw === OWNER_PW || (sel.password && pw === sel.password)) ? onLogin(sel) : setErr("Password salah."); return; }
     if (firstTime) {
@@ -1128,6 +1164,24 @@ function Auth({ state, onLogin, update }) {
       update((s) => { s.users.find((u) => u.id === sel.id).password = pw; return s; });
       onLogin({ ...sel, password: pw });
     } else { pw === sel.password ? onLogin(sel) : setErr("Password salah."); }
+  };
+  const cekJawab = () => {
+    if (normAnswer(jwb) !== normAnswer(sel.securityA)) {
+      const sisaBaru = sisa - 1;
+      setSisa(sisaBaru); setJwb("");
+      if (sisaBaru <= 0) { setLupa(null); setErr(`Jawaban salah ${LUPA_MAX}×. Minta owner reset lewat menu Tim.`); }
+      else setErr(`Jawaban salah. Sisa ${sisaBaru}× percobaan.`);
+      return;
+    }
+    setErr(""); setJwb(""); setLupa("baru");
+  };
+  // Setelah jawabannya benar dan password baru dibuat, langsung masuk — sama seperti alur
+  // login pertama; menyuruh ketik ulang password yang baru saja dibuat cuma bikin repot.
+  const simpanBaru = () => {
+    if (pw.length < 4) return setErr("Password minimal 4 karakter.");
+    if (pw !== pw2) return setErr("Konfirmasi password tidak sama.");
+    update((s) => { const u = s.users.find((x) => x.id === sel.id); if (u) u.password = pw; return s; });
+    onLogin({ ...sel, password: pw });
   };
   return (
     <div className="mr-app dark min-h-screen text-white grid place-items-center p-6 relative overflow-hidden" style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#0c0d12 0%,#14161d 55%,#050608 100%)" }}>
@@ -1153,11 +1207,42 @@ function Auth({ state, onLogin, update }) {
             <button onClick={back} className="flex items-center gap-1 text-slate-400 text-sm mb-5"><ArrowLeft size={16} /> Ganti akun</button>
             <div className="flex items-center gap-3 mb-5"><Avatar user={sel} size={44} /><div><p className="font-semibold">{sel.name}</p><p className="text-xs text-slate-400">{sel.position}</p></div></div>
             {firstTime && <p className="text-xs text-amber-400 mb-3 bg-amber-400/10 rounded-xl px-3 py-2">Login pertama — buat password kamu sendiri.</p>}
-            <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && !firstTime && submit()} placeholder={firstTime ? "Buat password baru" : "Masukkan password"} className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>
-            {firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>}
-            {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
-            <button onClick={submit} className="w-full py-3 rounded-xl font-bold bg-white text-slate-900 active:scale-[.98] transition">{firstTime ? "Buat & masuk" : "Masuk"}</button>
-            {!firstTime && sel.role === "staff" && <p className="text-center text-xs text-slate-500 mt-4">Lupa password? Minta owner reset lewat menu <b className="text-slate-300">Tim</b>.</p>}
+
+            {/* ── Langkah 1 lupa password: jawab pertanyaan keamanan ── */}
+            {lupa === "tanya" && (
+              <>
+                <p className="text-xs text-slate-300 mb-3 bg-white/5 rounded-xl px-3 py-2.5"><span className="text-slate-500 block mb-0.5">Pertanyaan keamanan kamu</span>{sel.securityQ}</p>
+                <div className="relative mb-3"><HelpCircle size={16} className="absolute left-3 top-3.5 text-slate-500" /><input value={jwb} onChange={(e) => { setJwb(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && cekJawab()} placeholder="Jawaban kamu" autoFocus className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>
+                {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
+                <button onClick={cekJawab} className="w-full py-3 rounded-xl font-bold bg-white text-slate-900 active:scale-[.98] transition">Verifikasi</button>
+                <button onClick={batalLupa} className="w-full text-center text-xs text-slate-500 mt-4">Batal, saya ingat passwordnya</button>
+              </>
+            )}
+
+            {/* ── Langkah 2 lupa password: buat password baru ── */}
+            {lupa === "baru" && (
+              <>
+                <p className="text-xs text-emerald-400 mb-3 bg-emerald-400/10 rounded-xl px-3 py-2">Jawaban benar. Buat password baru kamu.</p>
+                <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} placeholder="Password baru (min. 4)" autoFocus className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>
+                <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && simpanBaru()} placeholder="Konfirmasi password baru" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>
+                {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
+                <button onClick={simpanBaru} className="w-full py-3 rounded-xl font-bold bg-white text-slate-900 active:scale-[.98] transition">Simpan &amp; masuk</button>
+              </>
+            )}
+
+            {/* ── Login biasa ── */}
+            {!lupa && (
+              <>
+                <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && !firstTime && submit()} placeholder={firstTime ? "Buat password baru" : "Masukkan password"} className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>
+                {firstTime && <div className="relative mb-3"><Lock size={16} className="absolute left-3 top-3.5 text-slate-500" /><input type="password" value={pw2} onChange={(e) => { setPw2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Konfirmasi password" className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-3 text-sm focus:outline-none focus:border-white/40" /></div>}
+                {err && <p className="text-rose-400 text-xs mb-3">{err}</p>}
+                <button onClick={submit} className="w-full py-3 rounded-xl font-bold bg-white text-slate-900 active:scale-[.98] transition">{firstTime ? "Buat & masuk" : "Masuk"}</button>
+                {/* Yang sudah mengatur pertanyaan keamanan bisa reset sendiri; yang belum tetap
+                    diarahkan ke jalur lama (owner reset lewat Tim) — tidak ada jawaban default. */}
+                {bolehLupa && <button onClick={() => { setLupa("tanya"); setPw(""); setPw2(""); setErr(""); }} className="w-full text-center text-xs text-slate-400 underline underline-offset-2 mt-4">Lupa password?</button>}
+                {!bolehLupa && !firstTime && sel.role !== "owner" && <p className="text-center text-xs text-slate-500 mt-4">Lupa password? Minta owner reset lewat menu <b className="text-slate-300">Tim</b>, atau atur pertanyaan keamanan di Profil biar lain kali bisa reset sendiri.</p>}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1201,6 +1286,20 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
     setMe((prev) => ({ ...prev, password: np }));
     setPwMsg({ t: "ok", m: "Password berhasil diganti." });
     setCur(""); setNp(""); setNp2("");
+  };
+  /* Pertanyaan keamanan — satu-satunya tempat mengaturnya, dan syarat supaya tombol
+     "Lupa password?" muncul di layar login. Password lama tetap diminta: pertanyaan ini
+     adalah jalan masuk kedua ke akun, jadi memasangnya setara dengan mengganti password. */
+  const [qOpen, setQOpen] = useState(false);
+  const [qSel, setQSel] = useState(me.securityQ || SECURITY_QS[0]);
+  const [qAns, setQAns] = useState(""); const [qCur, setQCur] = useState(""); const [qMsg, setQMsg] = useState(null);
+  const simpanQ = () => {
+    if (qCur !== me.password) return setQMsg({ t: "err", m: "Password kamu salah." });
+    if (normAnswer(qAns).length < 2) return setQMsg({ t: "err", m: "Jawaban minimal 2 karakter." });
+    update((s) => { const u = s.users.find((x) => x.id === me.id); if (u) { u.securityQ = qSel; u.securityA = qAns.trim(); } return s; });
+    setMe((prev) => ({ ...prev, securityQ: qSel, securityA: qAns.trim() }));
+    setQMsg({ t: "ok", m: "Tersimpan. Sekarang tombol \"Lupa password?\" muncul di layar login kamu." });
+    setQCur(""); setQAns("");
   };
   const pick = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 256, 0.72); if (!data) return; update((s) => { const u = s.users.find((x) => x.id === me.id); if (u) u.avatar = data; return s; }); setMe((prev) => ({ ...prev, avatar: data })); };
   const [ntMsg, setNtMsg] = useState(null);
@@ -1249,6 +1348,25 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
           </div>
         )}
       </div>
+      {/* Owner tidak ditawari: dia sudah punya password cadangan permanen, jadi tak bisa terkunci. */}
+      {me.role !== "owner" && (
+        <div className="s-soft rounded-xl px-4 py-3 mb-3">
+          <button onClick={() => { setQOpen((o) => !o); setQMsg(null); }} className="w-full flex items-center justify-between text-sm font-semibold">
+            <span className="flex items-center gap-2"><HelpCircle size={16} />Pertanyaan keamanan{me.securityA ? <span className="text-[10px] font-bold tg-emerald px-1.5 py-0.5 rounded">aktif</span> : <span className="text-[10px] font-bold tg-amber px-1.5 py-0.5 rounded">belum diatur</span>}</span>
+            <ChevronRight size={16} className={`transition ${qOpen ? "rotate-90" : ""}`} />
+          </button>
+          {qOpen && (
+            <div className="mt-3 space-y-2">
+              <p className="text-[11px] s-muted leading-relaxed">Dipakai buat reset password sendiri kalau lupa, tanpa nunggu owner. Pilih yang jawabannya nggak gampang ditebak orang kantor.</p>
+              <select className={inputCls} value={qSel} onChange={(e) => { setQSel(e.target.value); setQMsg(null); }}>{SECURITY_QS.map((q) => <option key={q} value={q}>{q}</option>)}</select>
+              <input className={inputCls} placeholder={me.securityA ? "Jawaban baru" : "Jawaban kamu"} value={qAns} onChange={(e) => { setQAns(e.target.value); setQMsg(null); }} />
+              <input type="password" className={inputCls} placeholder="Password kamu sekarang" value={qCur} onChange={(e) => { setQCur(e.target.value); setQMsg(null); }} />
+              {qMsg && <p className={`text-xs ${qMsg.t === "ok" ? "text-emerald-500" : "text-rose-500"}`}>{qMsg.m}</p>}
+              <Btn onClick={simpanQ} className="w-full">Simpan pertanyaan</Btn>
+            </div>
+          )}
+        </div>
+      )}
       {(me.role === "owner" || me.role === "admin") && (
         <div className="s-soft rounded-xl px-4 py-3 mb-3">
           <p className="text-sm font-semibold flex items-center gap-2 mb-1"><Download size={16} />Backup data</p>
