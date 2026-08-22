@@ -7,7 +7,7 @@ import {
   Moon, Sun, Gift, PieChart as PieIcon, ChevronLeft, ChevronRight, ImagePlus,
   MessageCircle, Send, Volume2, VolumeX, Download, Search, Bell, BellOff, Gauge,
   BookOpen, ZoomIn, ZoomOut, Loader2, List, Upload, ChevronDown, ClipboardCheck, Archive, CalendarDays,
-  HelpCircle
+  HelpCircle, Eye, EyeOff
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { createPortal } from "react-dom";
@@ -1296,6 +1296,19 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
   };
   const [snd, setSnd] = useState(SOUND_ON);
   const [pwOpen, setPwOpen] = useState(false);
+  /* Lihat password sendiri. Cuma password AKUN INI (me), tidak pernah punya orang lain, dan
+     cuma setelah login — jadi tidak membuka akses yang belum dipunyai pemiliknya.
+     Owner belum tentu menyimpan password sendiri (normalize sengaja tidak mengisi field-nya);
+     kalau kosong, yang dipakai masuk adalah OWNER_PW, jadi itu yang ditampilkan. */
+  const [lihatPw, setLihatPw] = useState(false);
+  const pwSaya = me.role === "owner" ? (me.password || OWNER_PW) : (me.password || "");
+  // Sengaja menyembunyikan diri lagi: app ini dipakai di HP yang sering dipegang bergantian di
+  // bengkel, gampang lupa menutup Profil dalam keadaan password kebuka.
+  useEffect(() => {
+    if (!lihatPw) return;
+    const t = setTimeout(() => setLihatPw(false), 20000);
+    return () => clearTimeout(t);
+  }, [lihatPw]);
   const [cur, setCur] = useState(""); const [np, setNp] = useState(""); const [np2, setNp2] = useState(""); const [pwMsg, setPwMsg] = useState(null);
   const changePw = () => {
     const okCur = me.role === "owner" ? (cur === OWNER_PW || (me.password && cur === me.password)) : cur === me.password;
@@ -1357,9 +1370,23 @@ function ProfileModal({ open, me, state, onClose, update, setMe, dark, toggleDar
         <button onClick={() => { SOUND_ON = !snd; setSnd(SOUND_ON); window.storage.set("motorell-sound", SOUND_ON ? "1" : "0").catch(() => {}); }} className={`w-12 h-7 rounded-full p-1 transition ${snd ? "ac-bg" : "bg-slate-300"}`}><div className={`w-5 h-5 ac-knob rounded-full transition ${snd ? "translate-x-5" : ""}`} /></button>
       </div>
       <div className="s-soft rounded-xl px-4 py-3 mb-3">
-        <button onClick={() => { setPwOpen((o) => !o); setPwMsg(null); }} className="w-full flex items-center justify-between text-sm font-semibold"><span className="flex items-center gap-2"><Lock size={16} />Ganti password</span><ChevronRight size={16} className={`transition ${pwOpen ? "rotate-90" : ""}`} /></button>
+        {/* setLihatPw(false) tiap buka/tutup: kalau tidak, panelnya kebuka lagi dalam keadaan
+            password terlanjur kelihatan. */}
+        <button onClick={() => { setPwOpen((o) => !o); setPwMsg(null); setLihatPw(false); }} className="w-full flex items-center justify-between text-sm font-semibold"><span className="flex items-center gap-2"><Lock size={16} />Password kamu</span><ChevronRight size={16} className={`transition ${pwOpen ? "rotate-90" : ""}`} /></button>
         {pwOpen && (
           <div className="mt-3 space-y-2">
+            <div className="s-bg rounded-xl px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] s-muted">Password kamu sekarang</p>
+                  <p className="text-sm font-bold tracking-wide truncate">{lihatPw ? (pwSaya || "(belum ada password)") : "••••••••"}</p>
+                </div>
+                <button onClick={() => setLihatPw((v) => !v)} className="shrink-0 flex items-center gap-1 text-xs font-semibold ac-text active:scale-95 transition">
+                  {lihatPw ? <EyeOff size={15} /> : <Eye size={15} />}{lihatPw ? "Sembunyikan" : "Lihat"}
+                </button>
+              </div>
+              {lihatPw && <p className="text-[10px] s-muted mt-1.5 leading-relaxed">Otomatis tertutup lagi 20 detik. Jangan dibuka pas HP-nya lagi dilihat orang lain.</p>}
+            </div>
             <input type="password" className={inputCls} placeholder="Password lama" value={cur} onChange={(e) => { setCur(e.target.value); setPwMsg(null); }} />
             <input type="password" className={inputCls} placeholder="Password baru (min. 4)" value={np} onChange={(e) => { setNp(e.target.value); setPwMsg(null); }} />
             <input type="password" className={inputCls} placeholder="Konfirmasi password baru" value={np2} onChange={(e) => { setNp2(e.target.value); setPwMsg(null); }} />
