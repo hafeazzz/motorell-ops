@@ -1791,123 +1791,17 @@ const DP_MIN = 100000;
 const DP_PRESETS = [{ l: "500 Ribu", v: 500000 }, { l: "1 Juta", v: 1000000 }];
 const dpValid = (n) => Number.isInteger(Number(n)) && Number(n) >= DP_MIN;
 
-/* ============ Investor per unit (nama + nominal setoran) ============
-   Disimpan sebagai u.investors = [{ name, amount }] di JSONB unit → tanpa ALTER TABLE.
+/* ============ Investor per unit ============
+   Isiannya kembali disederhanakan jadi KODE saja (u.investorCode) seperti semula — form nama +
+   nominal sudah dilepas.
 
-   CATATAN PENTING: daftar ini bersifat CATATAN, bukan dasar hitungan. Bagi hasil tetap memakai
-   satu field u.investorShare (%) seperti sebelumnya — unitProfit/estimateProfit/Arsip tidak
-   disentuh sama sekali, jadi tidak ada angka profit lama yang bergeser. Selama ini beberapa
-   investor terpaksa dijejalkan ke satu kolom teks `investorCode` ("M2+M", "8II+M 3JT"); daftar ini
-   menggantikan kebiasaan itu, sementara investorCode tetap dipakai untuk bagi hasil. */
-const INVESTOR_MIN = 100000;
-const investorAmountValid = (n) => String(n).trim() !== "" && Number.isInteger(Number(n)) && Number(n) >= INVESTOR_MIN;
-const investorInputValid = (f) => String((f && f.name) || "").trim() !== "" && investorAmountValid((f && f.amount) || "");
+   u.investors = [{ name, amount }] TETAP ADA di JSONB unit dan tetap ditampilkan sebagai lencana
+   di UangTab: yang dihapus cuma cara memasukkannya, bukan datanya. withUnitDefaults masih
+   membackfill `investors: []` sehingga daftar unit lama ikut terbawa utuh tiap kali state disimpan.
+
+   Bagi hasil sejak dulu memakai u.investorShare (%) bersama u.investorCode — bukan daftar ini —
+   jadi tidak ada satu pun angka profit yang bergeser karena perubahan ini. */
 const investorsTotal = (arr) => (arr || []).reduce((a, x) => a + (Number(x.amount) || 0), 0);
-const investorDup = (arr, name) => (arr || []).some((x) => String(x.name || "").trim().toLowerCase() === String(name || "").trim().toLowerCase());
-
-function InvestorEditor({ value, onChange, wajib = true }) {
-  const list = value || [];
-  const [f, setF] = useState({ name: "", amount: "" });
-  const [msg, setMsg] = useState("");
-  const sah = investorInputValid(f);
-  const tambah = () => {
-    if (!sah) return;
-    if (investorDup(list, f.name)) { setMsg(`Investor "${f.name.trim()}" sudah ada di daftar.`); return; }
-    onChange([...list, { name: f.name.trim(), amount: Number(f.amount) }]);
-    setF({ name: "", amount: "" }); setMsg("");
-  };
-  return (
-    <div className="mb-3">
-      <span className="text-xs font-semibold s-muted mb-1 block">{wajib ? <><span className="text-rose-500">*</span> Investor (wajib, minimal 1)</> : "Investor"}</span>
-      {/* Di HP menumpuk 1 kolom; mulai layar sedang nama+nominal sebaris. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <input className={inputCls} value={f.name} onChange={(e) => { setF({ ...f, name: e.target.value }); setMsg(""); }} placeholder="Nama investor (cth: m2)" />
-        <input type="number" inputMode="numeric" min={INVESTOR_MIN} className={inputCls} value={f.amount} onChange={(e) => { setF({ ...f, amount: e.target.value }); setMsg(""); }} placeholder={`Nominal (min ${rp(INVESTOR_MIN)})`} />
-      </div>
-      <Btn variant="ghost" onClick={tambah} disabled={!sah} className="w-full mt-1.5"><Plus size={14} className="inline mr-1 -mt-0.5" />Tambah investor</Btn>
-      {msg && <p className="text-[11px] text-rose-500 font-semibold mt-1.5">{msg}</p>}
-      {!msg && f.name.trim() && !investorAmountValid(f.amount) && <p className="text-[11px] s-muted mt-1.5">Isi nominalnya juga — minimal {rp(INVESTOR_MIN)}, angka bulat.</p>}
-      {!msg && !f.name.trim() && String(f.amount).trim() !== "" && <p className="text-[11px] s-muted mt-1.5">Isi nama investornya juga.</p>}
-
-      {list.length === 0 ? (
-        <p className="text-[11px] s-muted mt-2">{wajib ? "Belum ada investor. Minimal 1 investor harus ditambahkan." : "Belum ada investor."}</p>
-      ) : (
-        <div className="mt-2 space-y-1.5">
-          {list.map((inv, i) => (
-            <div key={i} className="flex items-center gap-2 s-soft rounded-xl px-3 py-2">
-              <span className="text-sm font-semibold truncate flex-1 min-w-0">{inv.name}</span>
-              <span className="text-sm font-bold shrink-0">{rp(inv.amount)}</span>
-              <button type="button" onClick={() => onChange(list.filter((_, k) => k !== i))} title={`Hapus ${inv.name}`} className="shrink-0 w-6 h-6 grid place-items-center rounded-md text-rose-500 active:scale-90"><X size={13} /></button>
-            </div>
-          ))}
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl ac-soft">
-            <span className="text-xs font-bold">Total investasi</span>
-            <span className="text-sm font-extrabold">{rp(investorsTotal(list))}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============ Foto STNK (wajib saat unit dibuat) ============ */
-const STNK_MAX_MB = 5;
-/* Divalidasi lalu dikompres 1600px/0.8 — jauh lebih besar & bening daripada foto motor biasa
-   (compress default 640/0.55), karena tulisan di STNK (nopol, nomor rangka, nomor mesin) harus
-   tetap kebaca. Batas 5MB berlaku ke berkas ASLI yang dipilih, sebelum dikompres. */
-async function pickStnk(file) {
-  if (!file) return { error: "Tidak ada berkas yang dipilih." };
-  if (!String(file.type || "").startsWith("image/")) return { error: "File harus berupa gambar (JPG, PNG, dll)." };
-  if (file.size > STNK_MAX_MB * 1024 * 1024) return { error: `Ukuran foto maksimal ${STNK_MAX_MB}MB.` };
-  const dataUrl = await compress(file, 1600, 0.8);
-  if (!dataUrl) return { error: "Gagal membaca gambar. Coba foto lain." };
-  return { dataUrl };
-}
-// compress() balik data-URL; Storage butuh Blob.
-function dataUrlToBlob(d) {
-  const [head, b64] = String(d).split(",");
-  const mime = ((head || "").match(/:(.*?);/) || [])[1] || "image/jpeg";
-  const bin = atob(b64 || "");
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
-function StnkPicker({ value, onChange, onZoom }) {
-  const ref = useRef(null);
-  const [msg, setMsg] = useState("");
-  const pilih = async (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = ""; // biar bisa pilih berkas yang sama lagi setelah dihapus
-    if (!f) return;
-    setMsg("");
-    const r = await pickStnk(f);
-    if (r.error) { setMsg(r.error); return; }
-    onChange(r.dataUrl);
-  };
-  return (
-    <div className="mb-3">
-      <span className="text-xs font-semibold s-muted mb-1 block"><span className="text-rose-500">*</span> Foto STNK (wajib)</span>
-      {value ? (
-        <div className="space-y-2">
-          <img src={value} alt="STNK" onClick={() => onZoom && onZoom(value)} className="w-full max-h-56 object-contain rounded-xl s-soft cursor-zoom-in" />
-          <div className="grid grid-cols-2 gap-2">
-            <Btn variant="ghost" onClick={() => ref.current && ref.current.click()}><Camera size={14} className="inline mr-1 -mt-0.5" />Ganti foto</Btn>
-            <Btn variant="ghost" onClick={() => { onChange(""); setMsg(""); }} className="!text-rose-500">Hapus</Btn>
-          </div>
-        </div>
-      ) : (
-        <button type="button" onClick={() => ref.current && ref.current.click()} className="w-full rounded-xl py-6 s-soft border border-dashed s-border grid place-items-center gap-1 active:scale-[0.99] transition">
-          <Camera size={22} className="ac-text" />
-          <span className="text-xs font-semibold">Pilih foto STNK</span>
-          <span className="text-[10px] s-muted">JPG / PNG · maks {STNK_MAX_MB}MB</span>
-        </button>
-      )}
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={pilih} />
-      {msg && <p className="text-[11px] text-rose-500 font-semibold mt-1.5">{msg}</p>}
-      {!value && !msg && <p className="text-[11px] s-muted mt-1.5">Foto STNK harus diunggah sebelum unit bisa disimpan.</p>}
-    </div>
-  );
-}
 
 /* Identitas motor dipecah jadi 4 bagian wajib: merek, model, warna, tahun.
    Bagian-bagiannya DISIMPAN terpisah (bukan cuma digabung jadi `name`) supaya Laporan bisa
@@ -1946,21 +1840,18 @@ function buildUnit(data, presetId) {
 }
 const defaultUnitExpense = (unitId, byId) => ({ id: uid(), unitId, cat: "jasa", amount: 250000, note: "Cek unit", by: byId || null, date: today() });
 function AddUnitModal({ open, onClose, update, unitOps, me }) {
-  const kosong = { brand: "", model: "", color: "", year: "", stnk: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", investors: [], inDate: today(), odometer: "" };
+  const kosong = { brand: "", model: "", color: "", year: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "" };
   const [f, setF] = useState(kosong);
   const [simpan, setSimpan] = useState(false);
-  const [gagal, setGagal] = useState("");
-  const [zoom, setZoom] = useState("");
-  const sah = unitPartsValid(f) && !!f.stnk && (f.investors || []).length > 0;
-  /* Foto STNK diunggah DULU; unitnya baru dibuat kalau unggahan berhasil. Kalau urutannya dibalik,
-     unggahan yang gagal menyisakan unit tanpa STNK — padahal STNK-nya wajib. */
-  const save = async () => {
+  const sah = unitPartsValid(f);
+  /* Tidak ada lagi unggahan foto STNK di sini, jadi save() tidak perlu async-await ke Storage —
+     unitnya langsung dibuat, dan tidak ada lagi kondisi gagal yang perlu ditampilkan.
+     stnkPath tetap ada di model unit (diisi null oleh buildUnit) supaya unit lama yang sudah
+     punya foto tidak kehilangan field-nya saat state disimpan ulang. */
+  const save = () => {
     if (!sah || simpan) return;
-    setSimpan(true); setGagal("");
-    const id = uid(); // dibuat di depan supaya berkas STNK bisa ditaruh di folder unit ini
-    const up = await window.storage.stnkUpload(id, dataUrlToBlob(f.stnk), "jpg");
-    if (!up || !up.ok) { setSimpan(false); setGagal("Gagal mengunggah foto STNK. " + ((up && up.error) || "Cek koneksi lalu ulangi.")); return; }
-    const u = buildUnit({ ...f, stnkPath: up.path }, id);
+    setSimpan(true);
+    const u = buildUnit(f);
     unitOps.add(u);
     update((s) => { s.expenses.push(defaultUnitExpense(u.id, me && me.id)); return s; });
     setF({ ...kosong, inDate: today() }); setSimpan(false); onClose();
@@ -1978,16 +1869,12 @@ function AddUnitModal({ open, onClose, update, unitOps, me }) {
       <p className="text-[11px] s-muted -mt-1 mb-3">
         {unitNameFrom(f) ? <>Nama unit: <b className="s-text">{unitNameFrom(f)}</b></> : "Merek, model, warna, dan tahun wajib diisi."}
       </p>
-      <StnkPicker value={f.stnk} onChange={(v) => setF({ ...f, stnk: v })} onZoom={setZoom} />
       <Field label="Plat nomor"><input className={inputCls} value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="B 1234 XYZ" /></Field>
       <DateBox label="Tanggal masuk" value={f.inDate} onChange={(v) => setF({ ...f, inDate: v })} />
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
-      <InvestorEditor value={f.investors} onChange={(v) => setF({ ...f, investors: v })} />
       <div className="grid grid-cols-2 gap-2"><Field label="Kode investor (bagi hasil)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} value={f.odometer} onChange={(e) => setF({ ...f, odometer: e.target.value })} placeholder="cth: 5000" /></Field></div>
       <Btn onClick={save} disabled={!sah || simpan} className="w-full mt-2">{simpan ? "Menyimpan…" : "Simpan unit"}</Btn>
-      {gagal && <p className="text-[11px] text-rose-500 font-semibold text-center mt-1.5">{gagal}</p>}
-      {!sah && <p className="text-[11px] s-muted text-center mt-1.5">Lengkapi merek, model, warna, tahun ({UNIT_YEAR_MIN}–{unitYearMax()}), foto STNK, dan minimal 1 investor dulu.</p>}
-      <Lightbox src={zoom} onClose={() => setZoom("")} />
+      {!sah && <p className="text-[11px] s-muted text-center mt-1.5">Lengkapi merek, model, warna, dan tahun ({UNIT_YEAR_MIN}–{unitYearMax()}) dulu.</p>}
     </Modal>
   );
 }
@@ -2046,15 +1933,15 @@ function ProfitBreakdown({ state, unit }) {
   );
 }
 
-/* Menampilkan STNK unit dari bucket privat. URL-nya bertanda tangan dan kedaluwarsa, jadi diambil
-   saat komponen dibuka — bukan disimpan di state unit. Unit LAMA (dibuat sebelum STNK diwajibkan)
-   tidak punya stnkPath; ditandai supaya kelihatan mana yang perlu dilengkapi. */
-function StnkView({ unit, onZoom, onReplace }) {
+/* Menampilkan foto STNK yang SUDAH terlanjur diunggah waktu STNK masih wajib — read-only.
+   Pengisian STNK sudah dihapus dari semua form, tapi berkas yang sudah ada di bucket tetap bisa
+   dilihat di sini supaya tidak ada data lama yang jadi tak terjangkau. URL-nya bertanda tangan dan
+   kedaluwarsa, jadi diambil saat komponen dibuka — bukan disimpan di state unit.
+   Unit tanpa stnkPath (semua unit baru) tidak menampilkan apa-apa. */
+function StnkView({ unit, onZoom }) {
   const [url, setUrl] = useState("");
   const [muat, setMuat] = useState(false);
   const [msg, setMsg] = useState("");
-  const [naik, setNaik] = useState(false);
-  const ref = useRef(null);
   useEffect(() => {
     let batal = false;
     setUrl(""); setMsg("");
@@ -2067,35 +1954,13 @@ function StnkView({ unit, onZoom, onReplace }) {
     });
     return () => { batal = true; };
   }, [unit.stnkPath]);
-  const ganti = async (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!f) return;
-    setMsg("");
-    const r = await pickStnk(f);
-    if (r.error) { setMsg(r.error); return; }
-    setNaik(true);
-    const up = await window.storage.stnkUpload(unit.id, dataUrlToBlob(r.dataUrl), "jpg");
-    setNaik(false);
-    if (!up || !up.ok) { setMsg("Gagal mengunggah. " + ((up && up.error) || "Cek koneksi.")); return; }
-    const lama = unit.stnkPath;
-    onReplace(up.path);
-    if (lama) window.storage.stnkDelete(lama); // berkas lama dibuang biar tidak jadi sampah
-  };
+  // Sengaja SETELAH useEffect: hook tidak boleh dilewati, jadi early return-nya di sini.
+  if (!unit.stnkPath) return null;
   return (
     <div className="mb-3">
       <span className="text-xs font-semibold s-muted mb-1 block">Foto STNK</span>
       {muat && <div className="s-soft rounded-xl h-28 animate-pulse" />}
       {!muat && url && <img src={url} alt="STNK" onClick={() => onZoom && onZoom(url)} className="w-full max-h-56 object-contain rounded-xl s-soft cursor-zoom-in" />}
-      {!muat && !url && !unit.stnkPath && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 mb-2">
-          <p className="text-[11px] leading-relaxed">Unit ini dibuat sebelum foto STNK diwajibkan, jadi belum ada fotonya. Silakan lengkapi.</p>
-        </div>
-      )}
-      <Btn variant="ghost" onClick={() => ref.current && ref.current.click()} disabled={naik} className="w-full mt-2">
-        <Camera size={14} className="inline mr-1 -mt-0.5" />{naik ? "Mengunggah…" : unit.stnkPath ? "Ganti foto STNK" : "Unggah foto STNK"}
-      </Btn>
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={ganti} />
       {msg && <p className="text-[11px] text-rose-500 font-semibold mt-1.5">{msg}</p>}
     </div>
   );
@@ -2168,9 +2033,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
         );
       })()}
       <Field label="Nama motor"><input className={inputCls} defaultValue={unit.name} onBlur={(e) => setField("name", e.target.value)} /></Field>
-      <StnkView unit={unit} onZoom={setZoom} onReplace={(path) => setField("stnkPath", path)} />
-      {/* wajib=false di sini: 22 unit lama belum punya daftar investor, jangan diteriaki. */}
-      <InvestorEditor value={unit.investors || []} onChange={(v) => setField("investors", v)} wajib={false} />
+      <StnkView unit={unit} onZoom={setZoom} />
       <Field label="Plat nomor"><input className={inputCls} defaultValue={unit.plate} onBlur={(e) => setField("plate", e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} defaultValue={unit.buyPrice || ""} onBlur={(e) => setField("buyPrice", +e.target.value || 0)} placeholder="9000000" /></Field><Field label="Target harga jual (Rp)"><input type="number" className={inputCls} defaultValue={unit.sellPrice || ""} onBlur={(e) => setField("sellPrice", +e.target.value || 0)} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><DateBox label="Tanggal masuk" value={unit.inDate} onChange={(v) => setField("inDate", v)} /><DateBox label="Tanggal keluar (terjual)" value={unit.soldAt} onChange={(v) => setField("soldAt", v || null)} /></div>
@@ -3433,12 +3296,10 @@ const INS_TOTAL = INSPEKSI_SECTIONS.reduce((a, s) => a + s.items.length, 0);
 function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit }) {
   const PARTS_KOSONG = { brand: "", model: "", color: "", year: "" };
   const [parts, setParts] = useState(PARTS_KOSONG);
-  const [stnk, setStnk] = useState(""); // data-URL, diunggah saat keputusan "Ya, beli"
-  const [investors, setInvestors] = useState([]);
   const name = unitNameFrom(parts); // nama gabungan, dipakai draft + riwayat inspeksi
-  // STNK & investor ikut wajib di sini: jalur ini juga membuat unit, kalau tidak dikunci dia jadi
-  // pintu belakang untuk membuat unit tanpa STNK / tanpa investor.
-  const bolehBeli = unitPartsValid(parts) && !!stnk && investors.length > 0;
+  // Identitas motor tetap wajib di sini karena jalur ini juga membuat unit; STNK & daftar investor
+  // sudah tidak diminta lagi, sama seperti di AddUnitModal.
+  const bolehBeli = unitPartsValid(parts);
   const [items, setItems] = useState({});
   const [notes, setNotes] = useState("");
   const [notePhotos, setNotePhotos] = useState([]);
@@ -3462,7 +3323,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
       catch (e) { if (!e || e.name !== "QuotaExceededError") { console.error("saveLocalDraft:", e); return; } }
     }
   };
-  const reset = () => { setParts(PARTS_KOSONG); setStnk(""); setInvestors([]); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); clearLocalDraft(); };
+  const reset = () => { setParts(PARTS_KOSONG); setItems({}); setNotes(""); setNotePhotos([]); setOpenSec("A"); clearLocalDraft(); };
   // ts = kapan item ini terakhir di-set — dipakai monitoring live & tampilan detail arsip.
   const setStatus = (key, st) => setItems((p) => {
     const cur = p[key] || {};
@@ -3541,10 +3402,7 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
       return;
     }
     const newId = uid(); // dibuat di luar updater supaya tak balapan dengan setState async
-    // STNK diunggah dulu; kalau gagal, unit TIDAK jadi dibuat dan inspeksi tetap utuh di layar.
-    const up = await window.storage.stnkUpload(newId, dataUrlToBlob(stnk), "jpg");
-    if (!up || !up.ok) { setSaving(false); alert("Gagal mengunggah foto STNK. " + ((up && up.error) || "Cek koneksi lalu ulangi.")); return; }
-    const u = buildUnit({ ...parts, stnkPath: up.path, investors, inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, newId);
+    const u = buildUnit({ ...parts, inspectionResult: { items, notes: notes.trim(), notePhotos, date: today(), by: me.id } }, newId);
     unitOps.add(u); // unit → tabel `units`
     update((s) => { s.expenses.push(defaultUnitExpense(newId, me.id)); s.inspections.unshift({ ...base, decision: "beli", unitId: newId }); return s; }); // expense + inspeksi → blob
     setSaving(false); reset(); onClose();
@@ -3571,8 +3429,6 @@ function InspeksiPage({ open, onClose, me, update, unitOps, state, onOpenUnit })
         <p className="text-[11px] s-muted -mt-1 mb-2">
           {name ? <>Nama unit: <b className="s-text">{name}</b></> : "Wajib diisi kalau motornya jadi dibeli."}
         </p>
-        <StnkPicker value={stnk} onChange={setStnk} onZoom={setZoom} />
-        <InvestorEditor value={investors} onChange={setInvestors} />
         {INSPEKSI_SECTIONS.map((sec) => {
           const op = openSec === sec.key; const cc = checkedCount(sec);
           return (
