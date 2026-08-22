@@ -53,7 +53,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject, getMetadata, listAll } from "firebase/storage";
 
 /* ═══════════════ UNITS (motor) ═══════════════ */
 
@@ -306,6 +306,165 @@ export const deletePhoto = async (photoURL) => {
   }
 };
 
+/* ═══════════════ FOTO STNK (pengganti bucket Supabase `stnk`) ═══════════════
+
+   Padanan Firebase dari storage.stnkUpload/stnkSignedUrl/stnkDelete di src/storage.js.
+   Bentuk path sengaja dibuat SAMA dengan yang lama — `<unitId>/<acak>.jpg` — cuma diberi awalan
+   folder `stnk/`, karena Firebase cuma punya satu bucket per project (tidak ada bucket terpisah
+   seperti Supabase). Nilai unit.stnkPath yang sudah tersimpan tetap dikenali: normalisasiPath()
+   menambahkan awalannya sendiri kalau belum ada.
+
+   Nama berkas TETAP acak, bukan `${unitId}-${Date.now()}-${file.name}`. Dua alasan konkret:
+   (1) App.jsx mengirim Blob hasil dataUrlToBlob() yang TIDAK punya .name, jadi pola itu
+       menghasilkan path berakhiran "undefined";
+   (2) nama yang gampang ditebak melemahkan satu-satunya penghalang akses di sini (lihat di bawah).
+
+   ⚠️  PERBEDAAN KEAMANAN DENGAN VERSI SUPABASE — bukan detail kecil:
+   Supabase memakai bucket privat + signed URL yang kedaluwarsa 1 jam. getDownloadURL() Firebase
+   mengembalikan URL bertoken yang BERLAKU SELAMANYA sampai tokennya di-revoke manual di Console.
+   Sekali tautannya bocor, foto STNK (nama & alamat pemilik, nomor rangka, nomor mesin) bisa
+   dibuka siapa saja tanpa batas waktu. Signed URL yang benar-benar kedaluwarsa butuh
+   Admin SDK / Cloud Function dengan service account — tidak bisa dari browser.
+   Selama itu belum ada, Security Rules di Firebase Console adalah satu-satunya penjaga. */
+
+const STNK_FOLDER = "stnk";
+const STNK_MAX_MB = 5;
+
+// unit.stnkPath lama tersimpan tanpa awalan folder (dulu nama bucket-nya yang jadi namespace).
+const normalisasiPath = (p) => (!p ? p : p.startsWith(`${STNK_FOLDER}/`) ? p : `${STNK_FOLDER}/${p}`);
+
+/**
+ * Unggah foto STNK ke Firebase Storage.
+ * @param {File|Blob} file  berkas gambar (App.jsx mengirim Blob tanpa .name — itu wajar)
+ * @param {string} unitId   id unit motor
+ * @returns {Promise<string>} path objek, untuk disimpan di unit.stnkPath
+ */
+export async function uploadStnkPhoto(file, unitId) {
+  if (!storage) throw new Error("Firebase Storage belum siap");
+  if (!file) throw new Error("Berkas kosong");
+  if (!unitId) throw new Error("unitId kosong");
+  if (file.type && !file.type.startsWith("image/")) throw new Error("Berkas harus berupa gambar");
+  if (file.size > STNK_MAX_MB * 1024 * 1024) throw new Error(`Ukuran foto maksimal ${STNK_MAX_MB}MB`);
+
+  const ext = (file.type || "").split("/")[1] === "png" ? "png" : "jpg";
+  const acak = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  const filePath = `${STNK_FOLDER}/${unitId}/${acak}.${ext}`;
+
+  await uploadBytes(ref(storage, filePath), file, {
+    contentType: file.type || "image/jpeg",
+    // Aman di-cache selamanya: nama berkasnya acak, isinya tidak pernah ditimpa.
+    cacheControl: "public, max-age=31536000",
+  });
+  console.log("✅ Foto STNK terunggah:", filePath);
+  return filePath;
+}
+
+/**
+ * Ambil URL foto STNK untuk ditampilkan di <img>.
+ * CATATAN: ini URL download bertoken, BUKAN signed URL yang kedaluwarsa — lihat peringatan
+ * di atas. Parameter kedaluwarsa sengaja tidak disediakan supaya tidak terkesan ada masa berlaku.
+ * @param {string} filePath nilai dari unit.stnkPath
+ * @returns {Promise<string|null>} URL, atau null kalau berkasnya tidak ada / tidak boleh diakses
+ */
+export async function getStnkPhotoUrl(filePath) {
+  if (!storage || !filePath) return null;
+  try {
+    return await getDownloadURL(ref(storage, normalisasiPath(filePath)));
+  } catch (err) {
+    // storage/object-not-found itu kasus wajar (unit lama, berkas sudah dihapus) — jangan berisik.
+    if (err && err.code === "storage/object-not-found") console.warn("Foto STNK tidak ada:", filePath);
+    else console.error("❌ Gagal mengambil URL STNK:", err);
+    return null;
+  }
+}
+
+/** Hapus foto STNK. Dipakai saat "Ganti foto STNK" supaya berkas lama tidak jadi sampah. */
+export async function deleteStnkPhoto(filePath) {
+  if (!storage || !filePath) return;
+  try {
+    await deleteObject(ref(storage, normalisasiPath(filePath)));
+    console.log("✅ Foto STNK dihapus:", filePath);
+  } catch (err) {
+    if (err && err.code === "storage/object-not-found") return; // sudah tidak ada = tujuan tercapai
+    console.error("❌ Gagal menghapus foto STNK:", err);
+    throw err;
+  }
+}
+
+/* ── Adaptor bentuk-lama ──────────────────────────────────────────────────────
+   Tanda tangan & nilai balik PERSIS window.storage.stnk* di src/storage.js, supaya integrasi
+   di App.jsx cukup ganti pemanggilnya tanpa mengubah alur if (!up.ok) di sekitarnya. */
+
+export const stnkUpload = async (unitId, blob, ext) => {
+  try {
+    const path = await uploadStnkPhoto(blob, unitId);
+    return { ok: true, path };
+  } catch (e) {
+    console.error("stnkUpload error:", e);
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+};
+
+export const stnkSignedUrl = (path) => getStnkPhotoUrl(path);
+
+export const stnkDelete = async (path) => {
+  try {
+    await deleteStnkPhoto(path);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+};
+
+/**
+ * Uji konektivitas Firebase Storage: unggah → cek metadata → list → hapus.
+ * Dipakai dari console browser. Untuk terminal pakai `npm run test:firebase`
+ * (skrip itu berdiri sendiri karena firebaseConfig.js membaca import.meta.env yang tidak ada di Node).
+ */
+export async function testFirebaseStorage() {
+  if (!storage) {
+    console.error("❌ Firebase Storage belum siap");
+    return false;
+  }
+  try {
+    console.log("\n🧪 Menguji Firebase Storage…\n");
+
+    console.log("Langkah 1: unggah berkas uji…");
+    const testRef = ref(storage, `_cek/konektivitas-${Date.now()}.txt`);
+    await uploadBytes(testRef, new Blob(["cek konektivitas"], { type: "text/plain" }));
+    console.log("  ✅ unggah");
+
+    console.log("Langkah 2: cek berkas ada…");
+    const metadata = await getMetadata(testRef);
+    console.log("  ✅ terbaca, ukuran:", metadata.size, "byte");
+
+    console.log("Langkah 3: list folder _cek…");
+    const isi = await listAll(ref(storage, "_cek"));
+    console.log("  ✅ folder terbaca, jumlah berkas:", isi.items.length);
+
+    console.log("Langkah 4: hapus berkas uji…");
+    await deleteObject(testRef);
+    console.log("  ✅ hapus");
+
+    console.log("\n" + "═".repeat(60));
+    console.log("✅ FIREBASE STORAGE SIAP");
+    console.log("═".repeat(60));
+    console.log("  Bucket   :", storage.app.options.storageBucket);
+    console.log("  Folder   :", `${STNK_FOLDER}/<unitId>/<acak>.jpg`);
+    console.log("  Maks     :", STNK_MAX_MB, "MB, image/*\n");
+    return true;
+  } catch (err) {
+    console.error("\n❌ UJI FIREBASE STORAGE GAGAL");
+    console.error("Error:", (err && err.code) || "", (err && err.message) || err);
+    console.error("\nPeriksa:");
+    console.error("1. Storage sudah diaktifkan di Firebase Console (Build → Storage → Get started)");
+    console.error("2. Security Rules mengizinkan operasinya — app ini TIDAK punya auth, jadi rules");
+    console.error("   bawaan (request.auth != null) akan selalu menolak");
+    console.error("3. VITE_FIREBASE_STORAGE_BUCKET benar (project ini: motorell-ops.firebasestorage.app)\n");
+    return false;
+  }
+}
+
 /* ═══════════════ IMPOR MASSAL ═══════════════
    writeBatch dibatasi 500 operasi per commit oleh Firestore, jadi dipecah per 500.
    Data sekarang jauh di bawah itu, tapi `attendance` (134 baris) dan blob lama gampang
@@ -419,4 +578,18 @@ export const testFirebaseConnection = async () => {
     console.error("❌ Firebase connection failed:", err);
     return false;
   }
+};
+
+// Diteruskan supaya pemakai cukup impor dari satu berkas ini.
+export { db, storage };
+
+export default {
+  uploadStnkPhoto,
+  getStnkPhotoUrl,
+  deleteStnkPhoto,
+  stnkUpload,
+  stnkSignedUrl,
+  stnkDelete,
+  testFirebaseStorage,
+  testFirebaseConnection,
 };
