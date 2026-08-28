@@ -1830,7 +1830,7 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
         </div>
       )}
       {isMgr && view === "sumber" ? (
-        <SumberUangPanel state={state} me={me} update={update} unitOps={unitOps} canEdit={isOwner} onOpenUnit={(id) => { setView("unit"); setDetail(id); }} />
+        <SumberUangPanel state={state} me={me} update={update} unitOps={unitOps} canManage={isOwner} canAllocate={isMgr} onOpenUnit={(id) => { setView("unit"); setDetail(id); }} />
       ) : (
       <>
       <div className="flex items-center justify-between pt-1"><p className="font-bold text-lg">Keuangan per Unit</p><div className="flex items-center gap-2"><Btn variant="ghost" onClick={() => onInspeksi && onInspeksi()} className="!px-3 !py-2"><ClipboardCheck size={15} className="inline mr-1 -mt-0.5" />Inspeksi</Btn><Btn onClick={() => setOpenUnit(true)} className="!px-3 !py-2"><Plus size={16} /></Btn></div></div>
@@ -2040,9 +2040,9 @@ function AddUnitModal({ open, onClose, update, unitOps, me, state }) {
   const kosong = { brand: "", model: "", color: "", year: "", plate: "", buyPrice: "", sellPrice: "", investorCode: "", inDate: today(), odometer: "", ...emptyAlloc };
   const [f, setF] = useState(kosong);
   const [simpan, setSimpan] = useState(false);
-  // Alokasi sumber uang cuma diisi owner (data sensitif), tapi validasinya tetap jalan buat semua
+  // Alokasi sumber uang diisi owner & admin, tidak oleh staff. Validasinya tetap jalan buat semua
   // supaya unit yang dibuat staff tidak pernah membawa alokasi setengah jadi.
-  const isOwner = me && me.role === "owner";
+  const isMgr = me && (me.role === "owner" || me.role === "admin");
   const iss = allocIssues(f, (state && state.moneySources) || [], state || { units: [], moneySources: [] }, null, f.buyPrice);
   const sah = unitPartsValid(f) && iss.ok;
   /* Tidak ada lagi unggahan foto STNK di sini, jadi save() tidak perlu async-await ke Storage —
@@ -2078,7 +2078,7 @@ function AddUnitModal({ open, onClose, update, unitOps, me, state }) {
       <DateBox label="Tanggal masuk" value={f.inDate} onChange={(v) => setF({ ...f, inDate: v })} />
       <div className="grid grid-cols-2 gap-2"><Field label="Harga beli (modal)"><input type="number" className={inputCls} value={f.buyPrice} onChange={(e) => setF({ ...f, buyPrice: e.target.value })} placeholder="9000000" /></Field><Field label="Target harga jual"><input type="number" className={inputCls} value={f.sellPrice} onChange={(e) => setF({ ...f, sellPrice: e.target.value })} placeholder="13500000" /></Field></div>
       <div className="grid grid-cols-2 gap-2"><Field label="Kode investor (bagi hasil)"><input className={inputCls} value={f.investorCode} onChange={(e) => setF({ ...f, investorCode: e.target.value })} placeholder="cth: DA" /></Field><Field label="Odometer (km)"><input type="number" className={inputCls} value={f.odometer} onChange={(e) => setF({ ...f, odometer: e.target.value })} placeholder="cth: 5000" /></Field></div>
-      {isOwner && state && (
+      {isMgr && state && (
         <>
           <p className="text-xs font-bold s-muted mb-1.5 flex items-center gap-1.5"><Banknote size={13} className="ac-text" />Uang dari mana?</p>
           <MoneyAllocFields value={f} onChange={(v) => setF({ ...f, ...v })} state={state} unitId={null} buyPrice={f.buyPrice} />
@@ -2090,9 +2090,12 @@ function AddUnitModal({ open, onClose, update, unitOps, me, state }) {
   );
 }
 /* ============ Sumber uang (owner & admin) ============
-   Hak akses: owner + admin MELIHAT semuanya (dashboard, rincian per motor, riwayat, export);
-   cuma OWNER yang boleh mengubah — tambah/edit/hapus sumber uang dan mengubah alokasi unit.
-   Staff tidak melihat apa pun dari bagian ini. Pembedanya satu prop: `canEdit`.
+   Hak akses dipecah dua, karena dua hal ini beda beratnya:
+   - `canAllocate` (owner + admin) — menempelkan/melepas/mengubah motor ke sumber uang. Ini kerja
+     harian: mencatat motor yang baru masuk dibeli pakai uang yang mana.
+   - `canManage` (owner saja) — membuat, mengubah budget/nama, dan menghapus sumber uangnya
+     sendiri. Ini menyentuh berapa banyak uang yang ada, bukan cuma ke mana perginya.
+   Staff tidak melihat apa pun dari bagian ini.
 
    Owner mau tahu "uang yang mana dipakai buat beli motor mana". Modelnya:
    satu SUMBER UANG (Uang A, Uang B, Uang Investor, …) punya total budget, lalu tiap unit motor
@@ -2120,6 +2123,12 @@ const unitAllocs = (u) => {
 const allocOnUnit = (u, sid) => unitAllocs(u).filter((a) => a.sourceId === sid).reduce((a, x) => a + x.amount, 0);
 const unitsOfSource = (units, sid) => (units || []).filter((u) => allocOnUnit(u, sid) > 0);
 const allocTotal = (v) => (+((v || {}).moneyAmount) || 0) + (+((v || {}).moneyAmount2) || 0);
+// Slot kosong berikutnya di sebuah unit (0 = dua-duanya sudah terpakai). Dipakai waktu menempelkan
+// motor dari sisi sumber uang: motor yang sudah dibiayai dua sumber tidak bisa ditambah lagi.
+const freeSlot = (u) => (!u || !u.moneySourceId ? 1 : !u.moneySourceId2 ? 2 : 0);
+// Kode investor yang sudah pernah dipakai, buat saran isian (tidak ada daftar investor terpisah
+// di app ini — kodenya hidup di masing-masing unit sebagai u.investorCode).
+const investorCodes = (units) => Array.from(new Set((units || []).map((u) => (u.investorCode || "").trim()).filter(Boolean))).sort();
 const sourceName = (sources, sid) => ((sources || []).find((s) => s.id === sid) || {}).name || "";
 // Statistik satu sumber. `skipUnitId` dipakai form edit: waktu menghitung sisa budget untuk unit
 // yang SEDANG diedit, alokasi lamanya jangan ikut dihitung — kalau tidak, mengubah 25jt jadi 26jt
@@ -2350,29 +2359,11 @@ function EditAllocModal({ unit, state, me, onClose, update, unitOps }) {
 /* Bagian "uang dari mana" di dalam Detail unit. Sengaja INLINE, bukan modal lain: Detail unit
    sendiri sudah sebuah Modal, dan menumpuk portal di atas portal bikin backdrop-nya saling tutup.
    Perubahan alokasi ditulis ke baris unit (tabel `units`), catatan auditnya ke blob. */
-function UnitAllocSection({ unit, state, me, update, unitOps, canEdit }) {
+function UnitAllocSection({ unit, state, me, update, unitOps }) {
   const [v, setV] = useState(allocOf(unit));
   const [ok, setOk] = useState("");
   useEffect(() => { setV(allocOf(unit)); setOk(""); }, [unit.id]);
   const sources = state.moneySources || [];
-  // Admin cuma melihat: ringkasan alokasinya saja, tanpa form yang bisa disentuh.
-  if (!canEdit) {
-    const list = unitAllocs(unit);
-    return (
-      <div className="mb-4 rounded-xl border s-border p-3">
-        <p className="text-xs font-bold mb-1.5 flex items-center gap-1.5"><Banknote size={14} className="ac-text" />Uang dari mana?</p>
-        {list.length === 0 ? (
-          <p className="text-[11px] s-muted">Belum ditandai sumber uangnya.</p>
-        ) : (
-          <div className="space-y-1">
-            {list.map((a) => <div key={a.slot} className="flex justify-between gap-2 text-[11px]"><span className="s-muted">{sourceName(sources, a.sourceId) || "sumber terhapus"}</span><span className="font-bold shrink-0">{rp(a.amount)}</span></div>)}
-            {list.length > 1 && <div className="flex justify-between gap-2 text-[11px] pt-1 border-t s-border"><span className="s-muted">Total alokasi</span><span className="font-extrabold shrink-0">{rp(allocTotal(unit))}</span></div>}
-          </div>
-        )}
-        <p className="text-[10px] s-muted mt-1.5">Cuma owner yang bisa mengubah alokasi ini.</p>
-      </div>
-    );
-  }
   const iss = allocIssues(v, sources, state, unit.id, unit.buyPrice);
   const berubah = JSON.stringify(allocToUnit(v)) !== JSON.stringify(allocToUnit(allocOf(unit)));
   const simpan = () => {
@@ -2398,11 +2389,29 @@ function UnitAllocSection({ unit, state, me, update, unitOps, canEdit }) {
   );
 }
 
-/* Rincian satu sumber uang: semua motor yang dibiayai + totalnya. */
-function MoneySourceDetailModal({ sourceId, state, canEdit, onClose, onOpenUnit, onEditAlloc }) {
+/* Rincian satu sumber uang: daftar motor yang dibiayai, sisa budget, tambah/lepas motor.
+   Ini "form"-nya sumber uang dari sisi uang — lawannya MoneyAllocFields yang mengerjakan hal yang
+   sama dari sisi motor. Keduanya menulis ke field yang persis sama di baris unit, jadi tidak ada
+   dua angka yang bisa berbeda; yang beda cuma dari arah mana owner/admin masuk. */
+function MoneySourceDetailModal({ sourceId, state, me, update, unitOps, canAllocate, onClose, onOpenUnit, onEditAlloc, onAddMotor }) {
+  const [confirmLepas, setConfirmLepas] = useState(null); // unitId
+  useEffect(() => { setConfirmLepas(null); }, [sourceId]);
   const src = (state.moneySources || []).find((s) => s.id === sourceId);
   if (!src) return null;
   const st = moneyStat(state, src);
+  // Lepas satu motor dari sumber ini. Slot lain (kalau split) dibiarkan utuh.
+  const lepas = (u) => {
+    const slots = unitAllocs(u).filter((a) => a.sourceId === src.id).map((a) => a.slot);
+    const amt = allocOnUnit(u, src.id);
+    unitOps.update(u.id, (x) => {
+      if (slots.includes(1)) { x.moneySourceId = ""; x.moneyAmount = 0; }
+      if (slots.includes(2)) { x.moneySourceId2 = ""; x.moneyAmount2 = 0; }
+      return x;
+    });
+    update((s) => pushMoneyLog(s, me, `Lepas ${u.name} dari ${src.name} (${rp(amt)}) — unitnya tetap ada`));
+    setConfirmLepas(null);
+  };
+  const mauLepas = confirmLepas && st.units.find((u) => u.id === confirmLepas);
   return (
     <Modal open={!!sourceId} onClose={onClose} title={src.name}>
       {src.notes && <p className="text-[11px] s-muted -mt-2 mb-3">{src.notes}</p>}
@@ -2412,9 +2421,10 @@ function MoneySourceDetailModal({ sourceId, state, canEdit, onClose, onOpenUnit,
         <Read label="Sisa" value={rp(st.remaining)} accent={st.remaining < 0 ? "#f43f5e" : st.remaining === 0 ? "#f59e0b" : "#10b981"} />
       </div>
       <MoneyBar st={st} />
-      <p className="text-xs font-bold s-muted mt-4 mb-2">{st.count} motor pakai uang ini</p>
+      {st.over && <p className="text-[11px] text-rose-500 font-semibold mt-2 flex items-start gap-1"><AlertTriangle size={12} className="shrink-0 mt-0.5" />Budget terlampaui {rp(st.used - st.budget)}.</p>}
+      <p className="text-xs font-bold s-muted mt-4 mb-2">Alokasi motor · {st.count} motor</p>
       {st.count === 0 ? (
-        <p className="text-xs s-muted mb-2">Belum ada motor yang ditandai memakai {src.name}.{canEdit && " Tandai lewat form tambah unit, atau buka Detail unit di tab Keuangan."}</p>
+        <p className="text-xs s-muted mb-2">Belum ada motor yang ditandai memakai {src.name}.{canAllocate && " Tap tombol di bawah buat menambahkannya."}</p>
       ) : (
         <div className="overflow-x-auto -mx-1 px-1">
           <table className="w-full text-[11px] border-collapse">
@@ -2423,9 +2433,10 @@ function MoneySourceDetailModal({ sourceId, state, canEdit, onClose, onOpenUnit,
                 <th className="py-1.5 pr-2 font-semibold">Motor</th>
                 <th className="py-1.5 pr-2 font-semibold">Tahun</th>
                 <th className="py-1.5 pr-2 font-semibold">Plat</th>
+                <th className="py-1.5 pr-2 font-semibold">Investor</th>
                 <th className="py-1.5 pr-2 font-semibold text-right whitespace-nowrap">Jumlah</th>
                 <th className="py-1.5 pr-2 font-semibold whitespace-nowrap">Tanggal</th>
-                {canEdit && <th className="py-1.5" />}
+                {canAllocate && <th className="py-1.5" />}
               </tr>
             </thead>
             <tbody>
@@ -2440,23 +2451,132 @@ function MoneySourceDetailModal({ sourceId, state, canEdit, onClose, onOpenUnit,
                     </td>
                     <td className="py-2 pr-2 s-muted whitespace-nowrap">{u.year || "-"}</td>
                     <td className="py-2 pr-2 s-muted whitespace-nowrap">{u.plate || "-"}</td>
+                    <td className="py-2 pr-2 s-muted whitespace-nowrap">{u.investorCode ? `${u.investorCode}${+u.investorShare > 0 ? ` (${u.investorShare}%)` : ""}` : "-"}</td>
                     <td className="py-2 pr-2 font-bold text-right whitespace-nowrap">{rp(amt)}</td>
                     <td className="py-2 pr-2 s-muted whitespace-nowrap">{u.inDate ? tglPendek(u.inDate) : "-"}</td>
-                    {canEdit && <td className="py-2 text-right"><button onClick={() => onEditAlloc(u.id)} className="s-muted p-1" title="Ubah alokasi"><Pencil size={13} /></button></td>}
+                    {canAllocate && (
+                      <td className="py-2 whitespace-nowrap text-right">
+                        <button onClick={() => onEditAlloc(u.id)} className="s-muted p-1" title="Ubah alokasi"><Pencil size={13} /></button>
+                        <button onClick={() => setConfirmLepas(u.id)} className="text-rose-400 p-1" title="Lepas dari sumber ini"><Trash2 size={13} /></button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
               <tr className="border-t-2 s-border">
                 <td className="py-2 pr-2 font-extrabold">TOTAL</td>
-                <td /><td />
+                <td /><td /><td />
                 <td className="py-2 pr-2 font-extrabold text-right whitespace-nowrap">{rp(st.used)}</td>
-                <td />{canEdit && <td />}
+                <td />{canAllocate && <td />}
               </tr>
             </tbody>
           </table>
         </div>
       )}
-      <Btn variant="ghost" onClick={onClose} className="w-full mt-4"><ArrowLeft size={15} className="inline mr-1.5 -mt-0.5" />Kembali ke daftar</Btn>
+      {mauLepas && (
+        <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 space-y-2">
+          <p className="text-[11px] text-center">Lepas <b>{mauLepas.name}</b> dari <b>{src.name}</b> ({rp(allocOnUnit(mauLepas, src.id))})? Motornya <b>tetap ada</b> di Keuangan, cuma tidak lagi terhitung memakai uang ini.</p>
+          <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmLepas(null)}>Batal</Btn><button onClick={() => lepas(mauLepas)} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white active:scale-[0.97] transition">Ya, lepas</button></div>
+        </div>
+      )}
+      {canAllocate && (
+        <Btn onClick={() => onAddMotor(src.id)} className="w-full mt-3"><Plus size={15} className="inline mr-1.5 -mt-0.5" />Tambah motor ke {src.name}</Btn>
+      )}
+      {canAllocate && st.remaining <= 0 && <p className="text-[11px] s-muted text-center mt-1.5">Sisa budget {rp(st.remaining)} — penambahan di atas sisa harus dikonfirmasi dulu.</p>}
+      <Btn variant="ghost" onClick={onClose} className="w-full mt-3"><ArrowLeft size={15} className="inline mr-1.5 -mt-0.5" />Kembali ke daftar</Btn>
+    </Modal>
+  );
+}
+
+/* Tempelkan motor yang sudah ada ke sebuah sumber uang. Kebalikan arah dari MoneyAllocFields:
+   di sini yang dipilih motornya, sumbernya sudah pasti. */
+function AddMotorToSourceModal({ sourceId, state, me, onClose, update, unitOps }) {
+  const [unitId, setUnitId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [inv, setInv] = useState("");
+  const [paksa, setPaksa] = useState(false); // sengaja melebihi sisa budget
+  const [ok, setOk] = useState("");
+  useEffect(() => { setUnitId(""); setAmount(""); setInv(""); setPaksa(false); setOk(""); }, [sourceId]);
+  const src = (state.moneySources || []).find((s) => s.id === sourceId);
+  if (!src) return null;
+  const st = moneyStat(state, src);
+  /* Motor yang boleh dipilih: belum memakai sumber INI, dan masih punya slot kosong. Motor yang
+     sudah dibiayai dua sumber lain tidak muncul — nominalnya harus diubah lewat "Ubah alokasi"
+     supaya jelas slot mana yang digeser, bukan diam-diam menimpa salah satunya. */
+  const tersedia = state.units.filter((u) => allocOnUnit(u, src.id) === 0 && freeSlot(u) > 0);
+  const penuh = state.units.filter((u) => allocOnUnit(u, src.id) === 0 && freeSlot(u) === 0);
+  const unit = tersedia.find((u) => u.id === unitId) || null;
+  const nominal = Number(amount);
+  const nominalSah = Number.isFinite(nominal) && nominal > 0;
+  const lewat = nominalSah && nominal > st.remaining;
+  const sah = !!unit && nominalSah && (!lewat || paksa);
+  const tambah = () => {
+    if (!sah) return;
+    const slot = freeSlot(unit);
+    const kode = inv.trim();
+    unitOps.update(unit.id, (u) => {
+      if (slot === 2) { u.moneySourceId2 = src.id; u.moneyAmount2 = Math.round(nominal); }
+      else { u.moneySourceId = src.id; u.moneyAmount = Math.round(nominal); }
+      if (kode) u.investorCode = kode; // kode investor kosong TIDAK menghapus yang sudah ada
+      return u;
+    });
+    update((s) => pushMoneyLog(s, me, `Tambah ${unit.name} ke ${src.name} · ${rp(Math.round(nominal))}${kode ? ` · investor ${kode}` : ""}${lewat ? " · MELEBIHI sisa budget" : ""}`));
+    setOk(`${unit.name} ditambahkan ke ${src.name}.`);
+    setTimeout(onClose, 800);
+  };
+  return (
+    <Modal open={!!sourceId} onClose={onClose} title={`Tambah motor ke ${src.name}`}>
+      <div className="s-soft rounded-xl px-3 py-2.5 mb-3 text-[11px]">
+        <div className="flex justify-between gap-2"><span className="s-muted">Budget {src.name}</span><span className="font-semibold shrink-0">{rp(st.budget)}</span></div>
+        <div className="flex justify-between gap-2"><span className="s-muted">Sudah dipakai {st.count} motor</span><span className="font-semibold shrink-0">{rp(st.used)}</span></div>
+        <div className="flex justify-between gap-2 pt-1 mt-1 border-t s-border"><span className="font-bold">Sisa budget</span><span className={`font-extrabold shrink-0 ${st.remaining > 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(st.remaining)}</span></div>
+      </div>
+      {tersedia.length === 0 ? (
+        <p className="text-xs s-muted mb-3">Semua motor sudah memakai {src.name} atau sudah penuh dua sumber. Tambah unit baru dulu di tab Keuangan.</p>
+      ) : (
+        <>
+          <Field label="Pilih motor *">
+            <select className={inputCls} value={unitId} onChange={(e) => { const id = e.target.value; setUnitId(id); const u = tersedia.find((x) => x.id === id); setInv((u && u.investorCode) || ""); setPaksa(false); if (u && !amount) setAmount(u.buyPrice ? String(u.buyPrice) : ""); }}>
+              <option value="">— pilih motor —</option>
+              {sortUnits(tersedia, "desc").map((u) => <option key={u.id} value={u.id}>{u.name}{u.plate ? ` · ${u.plate}` : ""} · {statusMeta(u.status).l}</option>)}
+            </select>
+          </Field>
+          {unit && (
+            <div className="s-soft rounded-xl px-3 py-2 mb-3 text-[11px] s-muted">
+              Tahun {unit.year || "-"} · Plat {unit.plate || "-"} · Harga beli <b className="s-text">{rp(unit.buyPrice)}</b> · Masuk {unit.inDate ? tglPendek(unit.inDate) : "-"}
+              {freeSlot(unit) === 2 && <div className="mt-1">Motor ini sudah dibiayai <b className="s-text">{sourceName(state.moneySources, unit.moneySourceId)}</b> {rp(unit.moneyAmount)} — {src.name} masuk sebagai sumber kedua (split).</div>}
+            </div>
+          )}
+          <Field label="Kode investor (opsional)">
+            <input className={inputCls} value={inv} onChange={(e) => setInv(e.target.value)} placeholder="cth: DA" list="mr-inv-codes" />
+            <datalist id="mr-inv-codes">{investorCodes(state.units).map((c) => <option key={c} value={c} />)}</datalist>
+          </Field>
+          <Field label="Jumlah dari sumber ini *">
+            <input type="number" inputMode="numeric" className={inputCls} value={amount} onChange={(e) => { setAmount(e.target.value); setPaksa(false); }} placeholder={`Maks ${st.remaining > 0 ? st.remaining : 0}`} />
+          </Field>
+          {unit && +unit.buyPrice > 0 && nominalSah && Math.round(nominal) !== +unit.buyPrice && (
+            <p className="text-[11px] text-amber-500 font-semibold -mt-1 mb-2 flex items-start gap-1"><AlertTriangle size={12} className="shrink-0 mt-0.5" />Beda {rp(Math.abs(Math.round(nominal) - +unit.buyPrice))} dari harga beli {rp(unit.buyPrice)}.</p>
+          )}
+          {lewat && (
+            /* Melebihi sisa DITAHAN secara default — itu yang dimaksud "cegah overspending". Tapi
+               tetap ada jalan keluar sekali tap: motor yang memang dibeli dengan uang tambahan di
+               luar budget harus tetap bisa dicatat apa adanya, dan pilihan itu ikut tercatat di
+               riwayat. Aplikasi yang memaksa angka bohong lebih berbahaya daripada budget lewat. */
+            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 mb-3 space-y-2">
+              <p className="text-[11px]">Jumlah <b>{rp(Math.round(nominal))}</b> melebihi sisa budget <b>{rp(st.remaining)}</b> sebanyak <b>{rp(Math.round(nominal) - st.remaining)}</b>.</p>
+              <label className="flex items-start gap-2 text-[11px] font-semibold cursor-pointer">
+                <input type="checkbox" checked={paksa} onChange={(e) => setPaksa(e.target.checked)} className="mt-0.5" />
+                <span>Tetap alokasikan — motor ini memang dibeli lewat budget. Dicatat di riwayat.</span>
+              </label>
+            </div>
+          )}
+          <Btn onClick={tambah} disabled={!sah} className="w-full">Tambah ke {src.name}</Btn>
+          {!unit && <p className="text-[11px] s-muted text-center mt-1.5">Pilih motor dan isi nominalnya dulu.</p>}
+          {ok && <p className="text-[11px] text-emerald-500 font-semibold text-center mt-2 flex items-center justify-center gap-1"><CheckCircle2 size={13} />{ok}</p>}
+        </>
+      )}
+      {penuh.length > 0 && <p className="text-[10px] s-muted mt-3">{penuh.length} motor tidak muncul karena sudah dibiayai dua sumber uang. Ubah lewat tombol pensil di daftar alokasi.</p>}
+      <Btn variant="ghost" onClick={onClose} className="w-full mt-3">Batal</Btn>
     </Modal>
   );
 }
@@ -2473,22 +2593,40 @@ function MoneyBar({ st }) {
   );
 }
 
-/* Dashboard sumber uang — owner DAN admin bisa melihat (dipanggil di balik isMgr, lihat UangTab).
-   `canEdit` (owner saja) yang memisahkan lihat vs ubah: admin dapat seluruh angka, rincian, riwayat,
-   dan export, tapi tombol tambah/edit/hapus sumber & ubah alokasi tidak dirender untuk dia. */
-function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canEdit }) {
+/* Dashboard sumber uang — owner & admin (dipanggil di balik isMgr, lihat UangTab). */
+function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, canAllocate }) {
   const [modal, setModal] = useState(null); // { editing } | null
   const [detail, setDetail] = useState(null);
+  const [addTo, setAddTo] = useState(null); // id sumber yang sedang ditambahi motor
   const [editAlloc, setEditAlloc] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [menghapus, setMenghapus] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [salin, setSalin] = useState("");
   const ov = moneyOverview(state);
-  const del = (src) => {
-    // Sumber yang masih dipakai motor TIDAK boleh dihapus: angka alokasi di unit akan menunjuk ke
-    // sumber yang tidak ada lagi dan hilang dari semua total tanpa jejak.
-    update((s) => { s.moneySources = s.moneySources.filter((x) => x.id !== src.id); return pushMoneyLog(s, me, `Hapus sumber uang ${src.name} · budget ${rp(src.totalBudget)}`); });
-    setConfirmDel(null);
+  /* Hapus sumber uang: motor yang masih menempel DILEPAS dulu satu per satu, baru sumbernya
+     dibuang. Kalau sumbernya dibuang duluan, angka di unit menunjuk ke id yang tidak ada lagi —
+     nominalnya hilang dari semua total tanpa jejak, dan tidak ada cara mengembalikannya.
+     Unit-nya sendiri tidak pernah ikut terhapus, cuma jadi "belum ditandai". */
+  const del = async (src) => {
+    if (menghapus) return;
+    setMenghapus(true);
+    const st = moneyStat(state, src);
+    for (const u of st.units) {
+      const slots = unitAllocs(u).filter((a) => a.sourceId === src.id).map((a) => a.slot);
+      // Menunggu tiap tulisan selesai (bukan Promise.all): unitOps.update membaca baris unit
+      // terkini lalu menulis balik, jadi menembakkannya barengan bisa saling menimpa.
+      await unitOps.update(u.id, (x) => {
+        if (slots.includes(1)) { x.moneySourceId = ""; x.moneyAmount = 0; }
+        if (slots.includes(2)) { x.moneySourceId2 = ""; x.moneyAmount2 = 0; }
+        return x;
+      });
+    }
+    update((s) => {
+      s.moneySources = s.moneySources.filter((x) => x.id !== src.id);
+      return pushMoneyLog(s, me, `Hapus sumber uang ${src.name} · budget ${rp(src.totalBudget)}${st.count ? ` · ${st.count} motor dilepas (unitnya tetap ada)` : ""}`);
+    });
+    setConfirmDel(null); setMenghapus(false);
   };
   const ringkasan = () => {
     const baris = [`RINGKASAN SUMBER UANG — ${new Date().toLocaleString("id-ID")}`, ""];
@@ -2528,12 +2666,12 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canEdit }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="font-bold text-lg flex items-center gap-1.5"><Banknote size={18} className="ac-text" />Sumber Uang</p>
-        {canEdit && <Btn onClick={() => setModal({ editing: null })} className="!px-3 !py-2"><Plus size={16} /></Btn>}
+        {canManage && <Btn onClick={() => setModal({ editing: null })} className="!px-3 !py-2"><Plus size={16} /></Btn>}
       </div>
-      <p className="text-[11px] s-muted -mt-1">Lacak uang mana yang dipakai buat beli motor mana. Angka <b className="s-text">dipakai</b> dan <b className="s-text">sisa</b> dihitung otomatis dari alokasi tiap unit.{!canEdit && " Kamu bisa melihat semua rinciannya; yang mengubah cuma owner."}</p>
+      <p className="text-[11px] s-muted -mt-1">Lacak uang mana yang dipakai buat beli motor mana. Angka <b className="s-text">dipakai</b> dan <b className="s-text">sisa</b> dihitung otomatis dari alokasi tiap unit.{!canManage && " Kamu bisa menempelkan & melepas motor; yang mengubah budget sumbernya cuma owner."}</p>
 
       {ov.rows.length === 0 && (
-        <Card className="p-8 text-center"><div className="text-5xl mb-2">💰</div><p className="font-semibold text-sm">Belum ada sumber uang</p><p className="text-xs s-muted mt-1">{canEdit ? "Tap + di atas buat menambah Uang A, Uang B, dan seterusnya." : "Owner belum menambahkan sumber uang apa pun."}</p></Card>
+        <Card className="p-8 text-center"><div className="text-5xl mb-2">💰</div><p className="font-semibold text-sm">Belum ada sumber uang</p><p className="text-xs s-muted mt-1">{canManage ? "Tap + di atas buat menambah Uang A, Uang B, dan seterusnya." : "Owner belum menambahkan sumber uang apa pun."}</p></Card>
       )}
 
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{ov.rows.map((r) => (
@@ -2551,23 +2689,24 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canEdit }) {
             <Read label="Sisa" value={rp(r.remaining)} accent={r.remaining < 0 ? "#f43f5e" : r.remaining === 0 && r.used > 0 ? "#f59e0b" : "#10b981"} />
           </div>
           <div className="mt-3"><MoneyBar st={r} /></div>
-          <div className={`grid ${canEdit ? "grid-cols-3" : "grid-cols-1"} gap-2 mt-3`}>
+          <div className={`grid ${canManage ? "grid-cols-3" : "grid-cols-1"} gap-2 mt-3`}>
             <Btn variant="ghost" onClick={() => setDetail(r.src.id)} className="!px-2 !text-xs">Lihat detail</Btn>
-            {canEdit && <Btn variant="ghost" onClick={() => setModal({ editing: r.src })} className="!px-2 !text-xs"><Pencil size={13} className="inline mr-1 -mt-0.5" />Edit</Btn>}
-            {canEdit && <Btn variant="ghost" onClick={() => setConfirmDel(r.src)} className="!px-2 !text-xs !text-rose-500"><Trash2 size={13} className="inline mr-1 -mt-0.5" />Hapus</Btn>}
+            {canManage && <Btn variant="ghost" onClick={() => setModal({ editing: r.src })} className="!px-2 !text-xs"><Pencil size={13} className="inline mr-1 -mt-0.5" />Edit</Btn>}
+            {canManage && <Btn variant="ghost" onClick={() => setConfirmDel(r.src)} className="!px-2 !text-xs !text-rose-500"><Trash2 size={13} className="inline mr-1 -mt-0.5" />Hapus</Btn>}
           </div>
-          {canEdit && confirmDel && confirmDel.id === r.src.id && (
-            r.count > 0 ? (
-              <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
-                <p className="text-[11px] leading-relaxed"><b>{r.src.name}</b> masih dipakai <b>{r.count} motor</b>. Lepas dulu motor-motornya lewat <b>Detail</b> supaya tidak ada alokasi yang menggantung tanpa sumber.</p>
-                <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmDel(null)}>Tutup</Btn><Btn onClick={() => { setConfirmDel(null); setDetail(r.src.id); }}>Buka detail</Btn></div>
+          {canManage && confirmDel && confirmDel.id === r.src.id && (
+            <div className="mt-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 space-y-2">
+              <p className="text-[11px] leading-relaxed text-center">
+                Hapus <b>{r.src.name}</b>?
+                {r.count > 0
+                  ? <> Sumber ini masih dipakai <b>{r.count} motor</b> ({rp(r.used)}). Motornya <b>tetap ada</b> di Keuangan, cuma jadi tidak punya sumber uang lagi — dan angka {rp(r.used)} itu hilang dari total.</>
+                  : <> Tidak ada motor yang memakainya.</>}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Btn variant="ghost" onClick={() => setConfirmDel(null)} disabled={menghapus}>Batal</Btn>
+                <button onClick={() => del(r.src)} disabled={menghapus} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white active:scale-[0.97] transition disabled:opacity-40">{menghapus ? "Menghapus…" : r.count > 0 ? `Hapus & lepas ${r.count} motor` : "Hapus"}</button>
               </div>
-            ) : (
-              <div className="mt-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 space-y-2">
-                <p className="text-[11px] text-center">Hapus <b>{r.src.name}</b>? Tidak ada motor yang memakainya.</p>
-                <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmDel(null)}>Batal</Btn><button onClick={() => del(r.src)} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white active:scale-[0.97] transition">Hapus</button></div>
-              </div>
-            )
+            </div>
           )}
         </Card>
       ))}</div>
@@ -2585,7 +2724,7 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canEdit }) {
             <span className={`text-xl font-extrabold shrink-0 ${ov.remaining >= 0 ? "text-emerald-500" : "text-rose-500"}`}><RpCount v={ov.remaining} /></span>
           </div>
           {ov.untracked.length > 0 && (
-            <p className="text-[11px] s-muted mt-3 flex items-start gap-1.5"><AlertTriangle size={12} className="text-amber-500 shrink-0 mt-0.5" />{ov.untracked.length} motor belum ditandai sumber uangnya, jadi belum masuk hitungan di atas.{canEdit && " Buka Detail unit di tab Keuangan buat menandainya."}</p>
+            <p className="text-[11px] s-muted mt-3 flex items-start gap-1.5"><AlertTriangle size={12} className="text-amber-500 shrink-0 mt-0.5" />{ov.untracked.length} motor belum ditandai sumber uangnya, jadi belum masuk hitungan di atas.{canAllocate && " Buka Lihat detail sumbernya lalu Tambah Motor, atau tandai lewat Detail unit."}</p>
           )}
           <div className="grid grid-cols-2 gap-2 mt-3">
             <Btn variant="ghost" onClick={exportExcel}><Download size={14} className="inline mr-1.5 -mt-0.5" />Export Excel</Btn>
@@ -2615,9 +2754,12 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canEdit }) {
         </Card>
       )}
 
-      {canEdit && <MoneySourceModal open={!!modal} editing={modal && modal.editing} state={state} me={me} onClose={() => setModal(null)} update={update} />}
-      <MoneySourceDetailModal sourceId={detail} state={state} canEdit={canEdit} onClose={() => setDetail(null)} onOpenUnit={(id) => { setDetail(null); onOpenUnit(id); }} onEditAlloc={(id) => { setDetail(null); setEditAlloc(id); }} />
-      {canEdit && <EditAllocModal unit={state.units.find((u) => u.id === editAlloc) || null} state={state} me={me} onClose={() => setEditAlloc(null)} update={update} unitOps={unitOps} />}
+      {canManage && <MoneySourceModal open={!!modal} editing={modal && modal.editing} state={state} me={me} onClose={() => setModal(null)} update={update} />}
+      <MoneySourceDetailModal sourceId={detail} state={state} me={me} update={update} unitOps={unitOps} canAllocate={canAllocate} onClose={() => setDetail(null)} onOpenUnit={(id) => { setDetail(null); onOpenUnit(id); }} onEditAlloc={(id) => setEditAlloc(id)} onAddMotor={(id) => setAddTo(id)} />
+      {/* Dirender SETELAH detail supaya bertumpuk di atasnya: keduanya portal ke <body> dengan
+          z-50, jadi yang belakangan menang. Menutupnya balik ke rincian sumber yang tadi. */}
+      {canAllocate && <AddMotorToSourceModal sourceId={addTo} state={state} me={me} onClose={() => setAddTo(null)} update={update} unitOps={unitOps} />}
+      {canAllocate && <EditAllocModal unit={state.units.find((u) => u.id === editAlloc) || null} state={state} me={me} onClose={() => setEditAlloc(null)} update={update} unitOps={unitOps} />}
     </div>
   );
 }
@@ -2795,9 +2937,9 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       {isMgr && unit.investorCode && (
         <Field label={`Bagi hasil investor ${unit.investorCode} (%)`}><input type="number" min="0" max="100" className={inputCls} defaultValue={unit.investorShare || ""} onBlur={(e) => setField("investorShare", Math.max(0, Math.min(100, +e.target.value || 0)))} placeholder="cth: 20" /></Field>
       )}
-      {/* Alokasi sumber uang: owner & admin melihat, cuma owner yang boleh mengubah. Staff tidak
-          sama sekali — sama seperti angka profit unit. */}
-      {isMgr && <UnitAllocSection unit={unit} state={state} me={me} update={update} unitOps={unitOps} canEdit={me.role === "owner"} />}
+      {/* Alokasi sumber uang: owner & admin sama-sama boleh mengubah. Staff tidak melihat sama
+          sekali — sama seperti angka profit unit. */}
+      {isMgr && <UnitAllocSection unit={unit} state={state} me={me} update={update} unitOps={unitOps} />}
       {isMgr && (
         <div className="mb-4"><ProfitBreakdown state={state} unit={unit} /></div>
       )}
