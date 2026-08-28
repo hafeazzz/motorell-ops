@@ -2247,22 +2247,32 @@ function profitRows(state) {
     const p = unitProfit(state, u);
     const modal = unitModal(state, u);
     const profit = p ? p.net : 0;
-    return { id: u.id, unit: u, name: u.name, year: u.year || "", plate: u.plate || "", modal, sell: +u.sellPrice || 0, profit, roi: modal > 0 ? (profit / modal) * 100 : 0, soldAt: u.soldAt || "", investor: u.investorCode || "", alloc: allocTotal(u) };
+    /* ROI = null (BUKAN 0) kalau modalnya tidak positif. Motor bermodal 0 yang laku 5jt itu
+       untung tak terhingga, bukan untung 0% — menampilkannya "0%" terbaca seperti tidak untung
+       sama sekali, persis kebalikan dari kenyataannya. UI-nya menampilkan "—". Modal minus juga
+       masuk sini: harga beli negatif itu salah input, bukan ROI -100%. */
+    return { id: u.id, unit: u, name: u.name, year: u.year || "", plate: u.plate || "", modal, sell: +u.sellPrice || 0, profit, roi: modal > 0 ? (profit / modal) * 100 : null, soldAt: u.soldAt || "", investor: (u.investorCode || "").trim(), alloc: allocTotal(u) };
   }).sort((a, b) => b.profit - a.profit);
 }
 function profitOverview(state) {
   const rows = profitRows(state);
   const total = rows.reduce((a, r) => a + r.profit, 0);
   const modal = rows.reduce((a, r) => a + r.modal, 0);
-  const urutRoi = [...rows].sort((a, b) => b.roi - a.roi);
+  // Baris ber-ROI null ditaruh paling belakang, bukan dianggap 0 — kalau tidak, motor tanpa modal
+  // menyusup ke tengah peringkat seolah-olah ROI-nya nol.
+  const urutRoi = [...rows].sort((a, b) => (b.roi == null ? -Infinity : b.roi) - (a.roi == null ? -Infinity : a.roi));
   return {
     rows, total, modal, count: rows.length,
     avg: rows.length ? Math.round(total / rows.length) : 0,
-    roi: modal > 0 ? (total / modal) * 100 : 0,
-    top: rows[0] || null, topRoi: urutRoi[0] || null, urutRoi,
+    roi: modal > 0 ? (total / modal) * 100 : null,
+    top: rows[0] || null, topRoi: urutRoi.find((r) => r.roi != null) || null, urutRoi,
     rugi: rows.filter((r) => r.profit < 0),
+    // Terjual tapi harga jualnya belum diisi → profitnya mustahil dihitung, jadi motor itu tidak
+    // muncul di mana pun di tab ini. Jumlahnya disebut supaya hilangnya tidak diam-diam.
+    tanpaHarga: (state.units || []).filter((u) => u.status === "terjual" && !(+u.sellPrice > 0)),
   };
 }
+const fmtRoi = (v) => (v == null ? "—" : `${v.toFixed(1)}%`);
 // Tren bulanan. Bulan dihitung dari month() (WIB) supaya sama dengan Laporan & Arsip — bukan dari
 // zona waktu device, yang bisa melempar transaksi ke bulan sebelumnya.
 function profitTrend(state, months = 6) {
@@ -2273,7 +2283,10 @@ function profitTrend(state, months = 6) {
     const ym = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
     const list = (state.units || []).filter((u) => u.status === "terjual" && +u.sellPrice > 0 && inMonth(u.soldAt, ym));
     const profit = list.reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : 0); }, 0);
-    out.push({ ym, label: d.toLocaleDateString("id-ID", { month: "short" }), motors: list.length, profit, avg: list.length ? Math.round(profit / list.length) : 0 });
+    // Tahun ikut ditulis kalau rentangnya melewati pergantian tahun — tanpa itu "Des" dan "Jan"
+    // di grafik yang sama tidak ketahuan tahun berapa.
+    const lintasTahun = d.getFullYear() !== y;
+    out.push({ ym, label: d.toLocaleDateString("id-ID", { month: "short" }) + (lintasTahun ? ` '${String(d.getFullYear()).slice(2)}` : ""), motors: list.length, profit, avg: list.length ? Math.round(profit / list.length) : 0 });
   }
   return out;
 }
@@ -2282,7 +2295,7 @@ function profitTrend(state, months = 6) {
    bilang datanya belum cukup, bukan menampilkan Rp 0 seolah-olah itu hasil hitungan. */
 function profitForecast(state) {
   const ov = profitOverview(state);
-  const roi = ov.modal > 0 ? ov.total / ov.modal : 0;
+  const roi = ov.modal > 0 ? ov.total / ov.modal : 0; // rata-rata bisa MINUS kalau selama ini rugi
   const pending = (state.units || []).filter((u) => u.status !== "terjual").map((u) => {
     const modal = unitModal(state, u);
     const profit = Math.round(modal * roi);
@@ -2293,6 +2306,8 @@ function profitForecast(state) {
 // Profit per kode investor. Tidak ada daftar investor terpisah — kodenya hidup di tiap unit.
 function profitByInvestor(state) {
   const map = {};
+  // r.investor sudah di-trim di profitRows, jadi "DA", " DA ", dan "  " tidak lagi jadi tiga
+  // kelompok berbeda (yang cuma spasi ikut tersaring karena jadi string kosong).
   profitRows(state).filter((r) => r.investor).forEach((r) => {
     const k = r.investor;
     if (!map[k]) map[k] = { investor: k, count: 0, profit: 0, modal: 0, motors: [] };
@@ -2964,9 +2979,12 @@ function BudgetAlertBanner({ ov, onOpen }) {
   return (
     <Card className="p-4">
       <p className="font-bold text-sm mb-2.5 flex items-center gap-1.5"><AlertTriangle size={15} className="text-amber-500" />Status budget ({alerts.length})</p>
+      {/* Latar pakai hex 8-digit (alpha), BUKAN color-mix(): color-mix baru ada di Safari 16.2 dan
+          Chrome 111, jadi di iPhone/Android yang belum diperbarui banner peringatannya keluar tanpa
+          warna sama sekali — justru komponen yang paling butuh terlihat. */}
       <div className="space-y-2.5">
         {alerts.map(({ r, pct, lv }) => (
-          <div key={r.src.id} className="rounded-xl p-2.5" style={{ background: `color-mix(in srgb, ${lv.warna} 12%, transparent)`, borderLeft: `3px solid ${lv.warna}` }}>
+          <div key={r.src.id} className="rounded-xl p-2.5" style={{ background: lv.warna + "1f", borderLeft: `3px solid ${lv.warna}` }}>
             <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
               <span className="truncate">{r.src.name} — {lv.label}</span>
               <span className="shrink-0" style={{ color: lv.warna }}>{Math.round(pct)}%</span>
@@ -2998,9 +3016,9 @@ function ProfitPanel({ state, onOpenUnit }) {
   );
   const kartu = [
     { ic: "💰", label: "Total profit bersih", val: rp(ov.total), sub: `${ov.count} motor terjual`, warna: ov.total >= 0 ? "text-emerald-500" : "text-rose-500" },
-    { ic: "📈", label: "Rata-rata per motor", val: rp(ov.avg), sub: `ROI keseluruhan ${ov.roi.toFixed(1)}%` },
+    { ic: "📈", label: "Rata-rata per motor", val: rp(ov.avg), sub: `ROI keseluruhan ${fmtRoi(ov.roi)}` },
     ...(ov.top ? [{ ic: "🏆", label: "Profit tertinggi", val: rp(ov.top.profit), sub: ov.top.name }] : []),
-    ...(ov.topRoi ? [{ ic: "⭐", label: "ROI terbaik", val: `${ov.topRoi.roi.toFixed(1)}%`, sub: ov.topRoi.name }] : []),
+    ...(ov.topRoi ? [{ ic: "⭐", label: "ROI terbaik", val: fmtRoi(ov.topRoi.roi), sub: ov.topRoi.name }] : []),
   ];
   return (
     <div className="space-y-3">
@@ -3022,6 +3040,9 @@ function ProfitPanel({ state, onOpenUnit }) {
 
       {ov.rugi.length > 0 && (
         <Card className="p-3"><p className="text-[11px] flex items-start gap-1.5"><AlertTriangle size={12} className="text-rose-500 shrink-0 mt-0.5" /><span><b>{ov.rugi.length} motor rugi</b>: {ov.rugi.map((r) => `${r.name} (${rp(r.profit)})`).join(", ")}.</span></p></Card>
+      )}
+      {ov.tanpaHarga.length > 0 && (
+        <Card className="p-3"><p className="text-[11px] flex items-start gap-1.5"><AlertTriangle size={12} className="text-amber-500 shrink-0 mt-0.5" /><span><b>{ov.tanpaHarga.length} motor sudah ditandai terjual tapi harga jualnya belum diisi</b> ({ov.tanpaHarga.map((u) => u.name).join(", ")}), jadi belum masuk hitungan mana pun di halaman ini. Isi harga jualnya di Detail unit.</span></p></Card>
       )}
 
       {/* Tren 6 bulan — bar dari <div>, bukan library grafik tambahan: ikut tema gelap/terang,
@@ -3074,7 +3095,7 @@ function ProfitPanel({ state, onOpenUnit }) {
                   <td className="py-2 pr-2 text-right s-muted whitespace-nowrap">{rp(r.modal)}</td>
                   <td className="py-2 pr-2 text-right s-muted whitespace-nowrap">{rp(r.sell)}</td>
                   <td className={`py-2 pr-2 text-right font-bold whitespace-nowrap ${r.profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(r.profit)}</td>
-                  <td className={`py-2 pr-2 text-right font-bold whitespace-nowrap ${r.roi >= 0 ? "" : "text-rose-500"}`}>{r.roi.toFixed(1)}%</td>
+                  <td className={`py-2 pr-2 text-right font-bold whitespace-nowrap ${r.roi != null && r.roi < 0 ? "text-rose-500" : ""}`} title={r.roi == null ? "Modal belum diisi, ROI tidak bisa dihitung" : ""}>{fmtRoi(r.roi)}</td>
                   <td className="py-2 pr-2 s-muted whitespace-nowrap">{r.investor || "-"}</td>
                   <td className="py-2 s-muted whitespace-nowrap">{r.soldAt ? tglPendek(r.soldAt) : "-"}</td>
                 </tr>
@@ -3084,7 +3105,7 @@ function ProfitPanel({ state, onOpenUnit }) {
                 <td className="py-2 pr-2 text-right font-extrabold whitespace-nowrap">{rp(ov.modal)}</td>
                 <td className="py-2 pr-2 text-right font-extrabold whitespace-nowrap">{rp(ov.rows.reduce((a, r) => a + r.sell, 0))}</td>
                 <td className={`py-2 pr-2 text-right font-extrabold whitespace-nowrap ${ov.total >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(ov.total)}</td>
-                <td className="py-2 pr-2 text-right font-extrabold">{ov.roi.toFixed(1)}%</td>
+                <td className="py-2 pr-2 text-right font-extrabold">{fmtRoi(ov.roi)}</td>
                 <td /><td />
               </tr>
             </tbody>
@@ -3112,7 +3133,9 @@ function ProfitPanel({ state, onOpenUnit }) {
                     <td className="py-2 pr-2"><button onClick={() => onOpenUnit(f.id)} className="font-bold text-left underline decoration-dotted">{f.name}</button></td>
                     <td className="py-2 pr-2"><Tag color={statusMeta(f.status).c}>{statusMeta(f.status).l}</Tag></td>
                     <td className="py-2 pr-2 text-right s-muted whitespace-nowrap">{rp(f.modal)}</td>
-                    <td className="py-2 pr-2 text-right font-bold text-emerald-500 whitespace-nowrap">{rp(f.profit)}</td>
+                    {/* Perkiraan ikut minus kalau ROI historisnya minus — warnanya wajib ikut,
+                        bukan selalu hijau seperti sebelumnya. */}
+                    <td className={`py-2 pr-2 text-right font-bold whitespace-nowrap ${f.profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(f.profit)}</td>
                     <td className="py-2 text-right font-semibold whitespace-nowrap">{rp(f.harga)}</td>
                   </tr>
                 ))}</tbody>
@@ -3238,8 +3261,10 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, ca
     // Profit & tren ikut diekspor supaya satu file cukup buat rapat — tidak perlu buka app lagi.
     const pov = profitOverview(state);
     const pRows = [["Motor", "Tahun", "Plat", "Modal (beli + pengeluaran)", "Harga jual", "Profit bersih", "ROI", "Investor", "Sumber uang", "Tgl jual"]];
-    pov.rows.forEach((r) => pRows.push([r.name, r.year, r.plate, r.modal, r.sell, r.profit, r.roi / 100, r.investor, describeAlloc(r.unit, state.moneySources), r.soldAt]));
-    pRows.push([], ["TOTAL", "", "", pov.modal, pov.rows.reduce((a, r) => a + r.sell, 0), pov.total, pov.roi / 100, "", "", ""]);
+    // ROI null (modal belum diisi) diekspor sebagai sel KOSONG, bukan 0 — nol di Excel ikut
+    // terhitung waktu orang bikin rata-rata di sheet itu, dan hasilnya jadi salah.
+    pov.rows.forEach((r) => pRows.push([r.name, r.year, r.plate, r.modal, r.sell, r.profit, r.roi == null ? "" : r.roi / 100, r.investor, describeAlloc(r.unit, state.moneySources), r.soldAt]));
+    pRows.push([], ["TOTAL", "", "", pov.modal, pov.rows.reduce((a, r) => a + r.sell, 0), pov.total, pov.roi == null ? "" : pov.roi / 100, "", "", ""]);
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(pRows), "Profit per Motor");
     const tRows = [["Bulan", "Motor terjual", "Profit bersih", "Rata-rata"]];
     profitTrend(state, 6).forEach((t) => tRows.push([t.ym, t.motors, t.profit, t.avg]));
