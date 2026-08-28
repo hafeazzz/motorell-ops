@@ -867,8 +867,20 @@ button{transition:transform .12s ease}
 /* ===== CETAK — dipakai tombol Print di dashboard Sumber Uang (browser bisa "Save as PDF").
    Header, navigasi bawah, dan tombol aksi disembunyikan; kartu dipaksa putih-hitam supaya tidak
    menghabiskan tinta dan tetap kebaca di kertas. Kartu tidak boleh terpotong antar halaman. ===== */
+@page{margin:12mm}
+.mr-printonly{display:none}
 @media print{
   .mr-header,.mr-nav,.mr-noprint{display:none!important}
+  .mr-printonly{display:block!important}
+  /* Judul & catatan kaki cetak: tanpa ini lembar yang dicetak tidak punya identitas sama sekali —
+     tumpukan angka tanpa keterangan ini laporan apa, punya siapa, dan dicetak kapan. */
+  .mr-printhead{text-align:center;border-bottom:2px solid #333;padding-bottom:8pt;margin-bottom:12pt}
+  .mr-printhead h1{font-size:16pt;font-weight:800;margin:0}
+  .mr-printhead p{font-size:9pt;color:#444;margin:4pt 0 0}
+  .mr-printfoot{margin-top:16pt;padding-top:8pt;border-top:1px solid #999;font-size:8pt;color:#555;text-align:center}
+  .mr-app th,.mr-app td{border:1px solid #999!important;padding:4pt!important;font-size:9pt!important}
+  .mr-app th{background:#e8e8e8!important;font-weight:700}
+  .mr-app p{orphans:3;widows:3}
   .mr-app{max-width:none!important;padding:0!important;background:#fff!important}
   .mr-app,.mr-app .s-bg,.mr-app .s-surface,.mr-app .s-soft{background:#fff!important;background-image:none!important;box-shadow:none!important;color:#000!important}
   .mr-app .s-muted{color:#444!important}
@@ -1840,13 +1852,15 @@ function UangTab({ state, me, update, unitOps, onInspeksi, focusUnit, onFocusCon
       {/* Owner & admin dapat satu sub-tab lagi di dalam Keuangan: pelacakan sumber uang. Ditaruh di
           sini, bukan jadi tab bottom-nav baru — nav-nya sudah 8 tab dan isinya masih soal keuangan. */}
       {isMgr && (
-        <div className="grid grid-cols-2 gap-1 s-soft rounded-xl p-1">
-          {[["unit", "Unit Motor"], ["sumber", "Sumber Uang"]].map(([k, l]) => (
+        <div className="grid grid-cols-3 gap-1 s-soft rounded-xl p-1">
+          {[["unit", "Unit Motor"], ["sumber", "Sumber Uang"], ["profit", "Profit"]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)} className={`py-2 rounded-lg text-xs font-bold transition ${view === k ? "ac-bg text-white" : "s-muted"}`}>{l}</button>
           ))}
         </div>
       )}
-      {isMgr && view === "sumber" ? (
+      {isMgr && view === "profit" ? (
+        <ProfitPanel state={state} onOpenUnit={(id) => { setView("unit"); setDetail(id); }} />
+      ) : isMgr && view === "sumber" ? (
         <SumberUangPanel state={state} me={me} update={update} unitOps={unitOps} canManage={isOwner} canAllocate={isMgr} onOpenUnit={(id) => { setView("unit"); setDetail(id); }} />
       ) : (
       <>
@@ -2221,6 +2235,73 @@ function moneyOverview(state) {
     untracked: (state.units || []).filter((u) => unitAllocs(u).length === 0),
   };
 }
+/* ===== Pelacakan profit =====
+   Penyebut ROI-nya MODAL SEBENARNYA (harga beli + semua pengeluaran unit), bukan nominal alokasi.
+   Alasannya: pembilangnya (unitProfit().net) sudah dipotong pengeluaran, komisi, dan jatah
+   investor. Kalau penyebutnya cuma alokasi sementara pembilangnya sudah bersih, ROI-nya jadi
+   kelihatan lebih besar dari kenyataan — motor yang alokasinya 10jt tapi habis 3jt buat servis
+   akan terbaca untung 50% padahal sebenarnya 38%. Satu basis untuk pembilang & penyebut. */
+const unitModal = (state, u) => (+u.buyPrice || 0) + expByUnit(state, u.id);
+function profitRows(state) {
+  return (state.units || []).filter((u) => u.status === "terjual" && +u.sellPrice > 0).map((u) => {
+    const p = unitProfit(state, u);
+    const modal = unitModal(state, u);
+    const profit = p ? p.net : 0;
+    return { id: u.id, unit: u, name: u.name, year: u.year || "", plate: u.plate || "", modal, sell: +u.sellPrice || 0, profit, roi: modal > 0 ? (profit / modal) * 100 : 0, soldAt: u.soldAt || "", investor: u.investorCode || "", alloc: allocTotal(u) };
+  }).sort((a, b) => b.profit - a.profit);
+}
+function profitOverview(state) {
+  const rows = profitRows(state);
+  const total = rows.reduce((a, r) => a + r.profit, 0);
+  const modal = rows.reduce((a, r) => a + r.modal, 0);
+  const urutRoi = [...rows].sort((a, b) => b.roi - a.roi);
+  return {
+    rows, total, modal, count: rows.length,
+    avg: rows.length ? Math.round(total / rows.length) : 0,
+    roi: modal > 0 ? (total / modal) * 100 : 0,
+    top: rows[0] || null, topRoi: urutRoi[0] || null, urutRoi,
+    rugi: rows.filter((r) => r.profit < 0),
+  };
+}
+// Tren bulanan. Bulan dihitung dari month() (WIB) supaya sama dengan Laporan & Arsip — bukan dari
+// zona waktu device, yang bisa melempar transaksi ke bulan sebelumnya.
+function profitTrend(state, months = 6) {
+  const [y, m] = month().split("-").map(Number);
+  const out = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    const ym = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+    const list = (state.units || []).filter((u) => u.status === "terjual" && +u.sellPrice > 0 && inMonth(u.soldAt, ym));
+    const profit = list.reduce((a, u) => { const p = unitProfit(state, u); return a + (p ? p.net : 0); }, 0);
+    out.push({ ym, label: d.toLocaleDateString("id-ID", { month: "short" }), motors: list.length, profit, avg: list.length ? Math.round(profit / list.length) : 0 });
+  }
+  return out;
+}
+/* Perkiraan profit motor yang belum laku, memakai ROI rata-rata dari yang sudah laku. Ini
+   TEBAKAN, bukan angka: kalau belum ada satu pun motor terjual, `basis` = 0 dan UI-nya harus
+   bilang datanya belum cukup, bukan menampilkan Rp 0 seolah-olah itu hasil hitungan. */
+function profitForecast(state) {
+  const ov = profitOverview(state);
+  const roi = ov.modal > 0 ? ov.total / ov.modal : 0;
+  const pending = (state.units || []).filter((u) => u.status !== "terjual").map((u) => {
+    const modal = unitModal(state, u);
+    const profit = Math.round(modal * roi);
+    return { id: u.id, name: u.name, status: u.status, modal, profit, harga: modal + profit, alloc: allocTotal(u) };
+  }).filter((x) => x.modal > 0).sort((a, b) => b.profit - a.profit);
+  return { roi: roi * 100, pending, total: pending.reduce((a, x) => a + x.profit, 0), basis: ov.count };
+}
+// Profit per kode investor. Tidak ada daftar investor terpisah — kodenya hidup di tiap unit.
+function profitByInvestor(state) {
+  const map = {};
+  profitRows(state).filter((r) => r.investor).forEach((r) => {
+    const k = r.investor;
+    if (!map[k]) map[k] = { investor: k, count: 0, profit: 0, modal: 0, motors: [] };
+    map[k].count += 1; map[k].profit += r.profit; map[k].modal += r.modal;
+    map[k].motors.push({ name: r.name, profit: r.profit });
+  });
+  return Object.values(map).map((x) => ({ ...x, roi: x.modal > 0 ? (x.profit / x.modal) * 100 : 0 })).sort((a, b) => b.profit - a.profit);
+}
+
 const describeAlloc = (v, sources) => {
   const parts = unitAllocs(v).map((a) => `${sourceName(sources, a.sourceId) || "sumber terhapus"} ${rp(a.amount)}`);
   return parts.length ? parts.join(" + ") : "tanpa sumber";
@@ -2232,6 +2313,17 @@ const pushMoneyLog = (s, me, text) => {
   return s;
 };
 const roleLabel = (r) => (r === "owner" ? "Owner" : r === "admin" ? "Admin" : r === "staff" ? "Staff" : "");
+/* Jenis catatan ditebak dari kalimatnya. Urutannya penting: yang lebih khusus ("DIHAPUS",
+   "TERJUAL") harus dicek sebelum yang umum ("Alokasi"), karena satu kalimat bisa memuat keduanya. */
+const LOG_KINDS = [
+  { k: "hapus", ic: "🗑️", label: "Hapus", uji: (t) => /DIHAPUS|Hapus sumber uang/.test(t) },
+  { k: "jual", ic: "💰", label: "Jual", uji: (t) => /TERJUAL|batal jual/.test(t) },
+  { k: "lepas", ic: "📍", label: "Lepas", uji: (t) => /^Lepas/.test(t) },
+  { k: "sumber", ic: "✨", label: "Sumber uang", uji: (t) => /^(Tambah|Ubah) sumber uang/.test(t) },
+  { k: "alokasi", ic: "📌", label: "Alokasi", uji: (t) => /^(Alokasi|Tambah|Unit baru)/.test(t) },
+];
+const logKind = (t) => LOG_KINDS.find((x) => x.uji(t || "")) || { k: "lain", ic: "📄", label: "Lainnya" };
+const LOG_FILTERS = [["all", "Semua"], ...LOG_KINDS.map((x) => [x.k, x.label])];
 const logTime = (iso) => { try { return new Date(iso).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return iso; } };
 
 /* Validasi alokasi. Dipisah jadi `errors` (menahan tombol simpan — datanya bakal ngaco) dan
@@ -2583,6 +2675,7 @@ function MoneySourceDetailModal({ sourceId, state, me, update, unitOps, canAlloc
                   <tr key={u.id} className="border-t s-border align-top">
                     <td className="py-2 pr-2">
                       <button onClick={() => onOpenUnit(u.id)} className="font-bold text-left underline decoration-dotted">{u.name}</button>
+                      <div className="mt-0.5"><Tag color={statusMeta(u.status).c}>{statusMeta(u.status).l}</Tag></div>
                       {lain.length > 0 && <p className="s-muted mt-0.5">+ {lain.map((a) => `${sourceName(state.moneySources, a.sourceId)} ${rp(a.amount)}`).join(", ")}</p>}
                     </td>
                     <td className="py-2 pr-2 s-muted whitespace-nowrap">{u.year || "-"}</td>
@@ -2856,6 +2949,202 @@ function MoneyBar({ st }) {
   );
 }
 
+/* Peringatan budget di dashboard. Sengaja BANNER menetap, bukan toast: toast yang muncul tiap
+   data berubah akan menyembur tiap kali satu alokasi disimpan, lalu hilang justru ketika owner
+   mau membacanya. Ambangnya memakai usedAktif (uang yang masih nyangkut) — budget yang "habis"
+   karena motornya sudah laku bukan masalah, uangnya sudah balik. */
+const ALERT_LEVELS = [{ min: 100, sev: "critical", warna: "#f43f5e", label: "habis" }, { min: 90, sev: "warning", warna: "#f59e0b", label: "hampir habis" }, { min: 80, sev: "info", warna: "#3b82f6", label: "80% terpakai" }];
+function BudgetAlertBanner({ ov, onOpen }) {
+  const alerts = ov.rows.map((r) => {
+    const pct = r.budget > 0 ? (r.usedAktif / r.budget) * 100 : r.usedAktif > 0 ? 100 : 0;
+    const lv = ALERT_LEVELS.find((l) => pct >= l.min);
+    return lv ? { r, pct, lv } : null;
+  }).filter(Boolean);
+  if (alerts.length === 0) return null;
+  return (
+    <Card className="p-4">
+      <p className="font-bold text-sm mb-2.5 flex items-center gap-1.5"><AlertTriangle size={15} className="text-amber-500" />Status budget ({alerts.length})</p>
+      <div className="space-y-2.5">
+        {alerts.map(({ r, pct, lv }) => (
+          <div key={r.src.id} className="rounded-xl p-2.5" style={{ background: `color-mix(in srgb, ${lv.warna} 12%, transparent)`, borderLeft: `3px solid ${lv.warna}` }}>
+            <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+              <span className="truncate">{r.src.name} — {lv.label}</span>
+              <span className="shrink-0" style={{ color: lv.warna }}>{Math.round(pct)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full s-soft overflow-hidden my-1.5"><div className="h-full rounded-full" style={{ width: Math.min(100, pct) + "%", background: lv.warna }} /></div>
+            <p className="text-[10px] s-muted">{rp(r.usedAktif)} nyangkut dari budget {rp(r.budget)} · sisa bisa dipakai {rp(r.tersedia)}</p>
+            <button onClick={() => onOpen(r.src.id)} className="text-[11px] font-semibold ac-text underline mt-1 mr-noprint">Lihat motor yang memakainya</button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/* Dashboard profit — sub-tab ketiga di Keuangan. Semua angkanya turunan dari unitProfit() yang
+   sama dengan Laporan & Detail unit; tidak ada rumus profit kedua di aplikasi ini. */
+function ProfitPanel({ state, onOpenUnit }) {
+  const [urut, setUrut] = useState("profit"); // profit | roi
+  const [semua, setSemua] = useState(false);
+  const ov = profitOverview(state);
+  const tren = profitTrend(state, 6);
+  const fc = profitForecast(state);
+  const inv = profitByInvestor(state);
+  const baris = urut === "roi" ? ov.urutRoi : ov.rows;
+  const tampil = semua ? baris : baris.slice(0, 20);
+  const maxTren = Math.max(1, ...tren.map((t) => Math.abs(t.profit)));
+  if (ov.count === 0) return (
+    <Card className="p-8 text-center"><div className="text-5xl mb-2">📈</div><p className="font-semibold text-sm">Belum ada motor terjual</p><p className="text-xs s-muted mt-1">Profit muncul di sini setelah ada motor yang ditandai terjual dan sudah diisi harga jualnya.</p></Card>
+  );
+  const kartu = [
+    { ic: "💰", label: "Total profit bersih", val: rp(ov.total), sub: `${ov.count} motor terjual`, warna: ov.total >= 0 ? "text-emerald-500" : "text-rose-500" },
+    { ic: "📈", label: "Rata-rata per motor", val: rp(ov.avg), sub: `ROI keseluruhan ${ov.roi.toFixed(1)}%` },
+    ...(ov.top ? [{ ic: "🏆", label: "Profit tertinggi", val: rp(ov.top.profit), sub: ov.top.name }] : []),
+    ...(ov.topRoi ? [{ ic: "⭐", label: "ROI terbaik", val: `${ov.topRoi.roi.toFixed(1)}%`, sub: ov.topRoi.name }] : []),
+  ];
+  return (
+    <div className="space-y-3">
+      <p className="font-bold text-lg flex items-center gap-1.5"><TrendingUp size={18} className="ac-text" />Profit</p>
+      <p className="text-[11px] s-muted -mt-1">Profit bersih = keuntungan kotor dikurangi pengeluaran unit, komisi penjualan, dan jatah investor — angka yang sama dengan Laporan. ROI dihitung terhadap modal sebenarnya (harga beli + pengeluaran).</p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+        {kartu.map((k) => (
+          <Card key={k.label} className="p-3 flex items-center gap-3">
+            <span className="text-2xl shrink-0">{k.ic}</span>
+            <div className="min-w-0">
+              <p className="text-[10px] s-muted">{k.label}</p>
+              <p className={`text-base font-extrabold leading-tight break-words ${k.warna || ""}`}>{k.val}</p>
+              <p className="text-[10px] s-muted truncate">{k.sub}</p>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {ov.rugi.length > 0 && (
+        <Card className="p-3"><p className="text-[11px] flex items-start gap-1.5"><AlertTriangle size={12} className="text-rose-500 shrink-0 mt-0.5" /><span><b>{ov.rugi.length} motor rugi</b>: {ov.rugi.map((r) => `${r.name} (${rp(r.profit)})`).join(", ")}.</span></p></Card>
+      )}
+
+      {/* Tren 6 bulan — bar dari <div>, bukan library grafik tambahan: ikut tema gelap/terang,
+          responsif tanpa usaha, dan ikut tercetak dengan benar. */}
+      <Card className="p-4">
+        <p className="font-bold text-sm mb-3">Tren profit 6 bulan</p>
+        <div className="flex items-end justify-between gap-1.5 h-32">
+          {tren.map((t) => {
+            const tinggi = Math.round((Math.abs(t.profit) / maxTren) * 100);
+            return (
+              <div key={t.ym} className="flex-1 flex flex-col items-center justify-end h-full min-w-0" title={`${t.label}: ${rp(t.profit)} dari ${t.motors} motor`}>
+                <span className="text-[9px] s-muted mb-1 whitespace-nowrap">{t.motors || ""}</span>
+                <div className="w-full rounded-t" style={{ height: Math.max(t.profit !== 0 ? 4 : 1, tinggi) + "%", background: t.profit < 0 ? "#f43f5e" : "#10b981", opacity: t.profit === 0 ? 0.15 : 1 }} />
+                <span className="text-[9px] s-muted mt-1">{t.label}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="overflow-x-auto -mx-1 px-1 mt-3">
+          <table className="w-full text-[11px] border-collapse">
+            <thead><tr className="s-muted text-left"><th className="py-1.5 pr-2 font-semibold">Bulan</th><th className="py-1.5 pr-2 font-semibold text-right">Motor</th><th className="py-1.5 pr-2 font-semibold text-right whitespace-nowrap">Profit</th><th className="py-1.5 font-semibold text-right whitespace-nowrap">Rata-rata</th></tr></thead>
+            <tbody>{tren.map((t) => (
+              <tr key={t.ym} className="border-t s-border">
+                <td className="py-1.5 pr-2 font-semibold">{t.label}</td>
+                <td className="py-1.5 pr-2 text-right s-muted">{t.motors}</td>
+                <td className={`py-1.5 pr-2 text-right font-bold whitespace-nowrap ${t.profit >= 0 ? "" : "text-rose-500"}`}>{rp(t.profit)}</td>
+                <td className="py-1.5 text-right s-muted whitespace-nowrap">{rp(t.avg)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <p className="font-bold text-sm">Profit per motor</p>
+          <div className="grid grid-cols-2 gap-1 s-soft rounded-lg p-1 mr-noprint">
+            {[["profit", "Profit"], ["roi", "ROI"]].map(([k, l]) => <button key={k} onClick={() => setUrut(k)} className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${urut === k ? "ac-bg text-white" : "s-muted"}`}>{l}</button>)}
+          </div>
+        </div>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full text-[11px] border-collapse">
+            <thead><tr className="s-muted text-left"><th className="py-1.5 pr-2 font-semibold">#</th><th className="py-1.5 pr-2 font-semibold">Motor</th><th className="py-1.5 pr-2 font-semibold">Tahun</th><th className="py-1.5 pr-2 font-semibold text-right whitespace-nowrap">Modal</th><th className="py-1.5 pr-2 font-semibold text-right whitespace-nowrap">Jual</th><th className="py-1.5 pr-2 font-semibold text-right whitespace-nowrap">Profit</th><th className="py-1.5 pr-2 font-semibold text-right">ROI</th><th className="py-1.5 pr-2 font-semibold">Investor</th><th className="py-1.5 font-semibold whitespace-nowrap">Tgl jual</th></tr></thead>
+            <tbody>
+              {tampil.map((r, i) => (
+                <tr key={r.id} className="border-t s-border">
+                  <td className="py-2 pr-2 s-muted">{i + 1}</td>
+                  <td className="py-2 pr-2"><button onClick={() => onOpenUnit(r.id)} className="font-bold text-left underline decoration-dotted">{r.name}</button></td>
+                  <td className="py-2 pr-2 s-muted whitespace-nowrap">{r.year || "-"}</td>
+                  <td className="py-2 pr-2 text-right s-muted whitespace-nowrap">{rp(r.modal)}</td>
+                  <td className="py-2 pr-2 text-right s-muted whitespace-nowrap">{rp(r.sell)}</td>
+                  <td className={`py-2 pr-2 text-right font-bold whitespace-nowrap ${r.profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(r.profit)}</td>
+                  <td className={`py-2 pr-2 text-right font-bold whitespace-nowrap ${r.roi >= 0 ? "" : "text-rose-500"}`}>{r.roi.toFixed(1)}%</td>
+                  <td className="py-2 pr-2 s-muted whitespace-nowrap">{r.investor || "-"}</td>
+                  <td className="py-2 s-muted whitespace-nowrap">{r.soldAt ? tglPendek(r.soldAt) : "-"}</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 s-border">
+                <td /><td className="py-2 pr-2 font-extrabold">TOTAL</td><td />
+                <td className="py-2 pr-2 text-right font-extrabold whitespace-nowrap">{rp(ov.modal)}</td>
+                <td className="py-2 pr-2 text-right font-extrabold whitespace-nowrap">{rp(ov.rows.reduce((a, r) => a + r.sell, 0))}</td>
+                <td className={`py-2 pr-2 text-right font-extrabold whitespace-nowrap ${ov.total >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(ov.total)}</td>
+                <td className="py-2 pr-2 text-right font-extrabold">{ov.roi.toFixed(1)}%</td>
+                <td /><td />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {baris.length > 20 && <button onClick={() => setSemua((v) => !v)} className="w-full text-[11px] font-semibold ac-text py-2 mt-1 mr-noprint">{semua ? "Tampilkan 20 teratas" : `Lihat semua ${baris.length} motor`}</button>}
+      </Card>
+
+      <Card className="p-4">
+        <p className="font-bold text-sm mb-1">Perkiraan profit motor belum laku</p>
+        <p className="text-[11px] s-muted mb-3">Memakai ROI rata-rata {fc.roi.toFixed(1)}% dari {fc.basis} motor yang sudah laku. Ini <b className="s-text">tebakan</b>, bukan angka pasti — harga pasar tiap motor berbeda.</p>
+        {fc.pending.length === 0 ? (
+          <p className="text-xs s-muted">Semua motor sudah laku.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <Read label="Motor belum laku" value={String(fc.pending.length)} />
+              <Read label="Perkiraan profit" value={rp(fc.total)} accent={fc.total >= 0 ? "#10b981" : "#f43f5e"} />
+            </div>
+            <div className="overflow-x-auto -mx-1 px-1">
+              <table className="w-full text-[11px] border-collapse">
+                <thead><tr className="s-muted text-left"><th className="py-1.5 pr-2 font-semibold">Motor</th><th className="py-1.5 pr-2 font-semibold">Status</th><th className="py-1.5 pr-2 font-semibold text-right whitespace-nowrap">Modal</th><th className="py-1.5 pr-2 font-semibold text-right whitespace-nowrap">Perkiraan profit</th><th className="py-1.5 font-semibold text-right whitespace-nowrap">Perkiraan harga jual</th></tr></thead>
+                <tbody>{fc.pending.slice(0, 15).map((f) => (
+                  <tr key={f.id} className="border-t s-border">
+                    <td className="py-2 pr-2"><button onClick={() => onOpenUnit(f.id)} className="font-bold text-left underline decoration-dotted">{f.name}</button></td>
+                    <td className="py-2 pr-2"><Tag color={statusMeta(f.status).c}>{statusMeta(f.status).l}</Tag></td>
+                    <td className="py-2 pr-2 text-right s-muted whitespace-nowrap">{rp(f.modal)}</td>
+                    <td className="py-2 pr-2 text-right font-bold text-emerald-500 whitespace-nowrap">{rp(f.profit)}</td>
+                    <td className="py-2 text-right font-semibold whitespace-nowrap">{rp(f.harga)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            {fc.pending.length > 15 && <p className="text-[10px] s-muted mt-2">{fc.pending.length - 15} motor lain tidak ditampilkan.</p>}
+          </>
+        )}
+      </Card>
+
+      {inv.length > 0 && (
+        <Card className="p-4">
+          <p className="font-bold text-sm mb-1">Profit per investor</p>
+          <p className="text-[11px] s-muted mb-3">Dikelompokkan dari kode investor di tiap unit. Angkanya profit bersih bisnis, bukan jatah investornya.</p>
+          <div className="space-y-2">
+            {inv.map((x) => (
+              <div key={x.investor} className="s-soft rounded-xl px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-sm">{x.investor}</span>
+                  <span className={`font-extrabold text-sm shrink-0 ${x.profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{rp(x.profit)}</span>
+                </div>
+                <p className="text-[10px] s-muted mt-0.5">{x.count} motor · modal {rp(x.modal)} · ROI {x.roi.toFixed(1)}%</p>
+                <p className="text-[10px] s-muted mt-0.5 truncate">{x.motors.slice(0, 3).map((m) => m.name).join(", ")}{x.motors.length > 3 ? ` + ${x.motors.length - 3} lainnya` : ""}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 /* Dashboard sumber uang — owner & admin (dipanggil di balik isMgr, lihat UangTab). */
 function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, canAllocate }) {
   const [modal, setModal] = useState(null); // { editing } | null
@@ -2866,8 +3155,11 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, ca
   const [menghapus, setMenghapus] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [semuaLog, setSemuaLog] = useState(false);
+  const [logFilter, setLogFilter] = useState("all");
   const [salin, setSalin] = useState("");
   const ov = moneyOverview(state);
+  const logsSaring = (state.moneyLogs || []).filter((l) => logFilter === "all" || logKind(l.text).k === logFilter);
+  const logsTampil = semuaLog ? logsSaring : logsSaring.slice(0, 15);
   /* Hapus sumber uang: motor yang masih menempel DILEPAS dulu satu per satu, baru sumbernya
      dibuang. Kalau sumbernya dibuang duluan, angka di unit menunjuk ke id yang tidak ada lagi —
      nominalnya hilang dari semua total tanpa jejak, dan tidak ada cara mengembalikannya.
@@ -2943,7 +3235,22 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, ca
       perMotor.push([u.name, u.year || "", u.plate || "", statusMeta(u.status).l, u.investorCode || "", describeAlloc(u, state.moneySources), allocTotal(u), u.buyPrice || 0, u.sellPrice || 0, u.status === "terjual" && p ? p.net : "", u.inDate || "", u.soldAt || ""]);
     });
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(perMotor), "Per Motor");
-    // Sheet ketiga: riwayat perubahan, supaya file export berdiri sendiri sebagai bukti audit.
+    // Profit & tren ikut diekspor supaya satu file cukup buat rapat — tidak perlu buka app lagi.
+    const pov = profitOverview(state);
+    const pRows = [["Motor", "Tahun", "Plat", "Modal (beli + pengeluaran)", "Harga jual", "Profit bersih", "ROI", "Investor", "Sumber uang", "Tgl jual"]];
+    pov.rows.forEach((r) => pRows.push([r.name, r.year, r.plate, r.modal, r.sell, r.profit, r.roi / 100, r.investor, describeAlloc(r.unit, state.moneySources), r.soldAt]));
+    pRows.push([], ["TOTAL", "", "", pov.modal, pov.rows.reduce((a, r) => a + r.sell, 0), pov.total, pov.roi / 100, "", "", ""]);
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(pRows), "Profit per Motor");
+    const tRows = [["Bulan", "Motor terjual", "Profit bersih", "Rata-rata"]];
+    profitTrend(state, 6).forEach((t) => tRows.push([t.ym, t.motors, t.profit, t.avg]));
+    const fc = profitForecast(state);
+    tRows.push([], [`Perkiraan motor belum laku (ROI rata-rata ${fc.roi.toFixed(1)}% dari ${fc.basis} motor terjual)`], ["Motor", "Status", "Modal", "Perkiraan profit", "Perkiraan harga jual"]);
+    fc.pending.forEach((f) => tRows.push([f.name, statusMeta(f.status).l, f.modal, f.profit, f.harga]));
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(tRows), "Tren & Perkiraan");
+    const iRows = [["Investor", "Motor terjual", "Modal", "Profit bersih", "ROI"]];
+    profitByInvestor(state).forEach((x) => iRows.push([x.investor, x.count, x.modal, x.profit, x.roi / 100]));
+    if (iRows.length > 1) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(iRows), "Per Investor");
+    // Sheet terakhir: riwayat perubahan, supaya file export berdiri sendiri sebagai bukti audit.
     const logRows = [["Waktu", "Oleh", "Peran", "Perubahan"]];
     (state.moneyLogs || []).forEach((l) => logRows.push([logTime(l.at), l.byName, roleLabel(l.byRole), l.text]));
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(logRows), "Riwayat");
@@ -2955,9 +3262,14 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, ca
         <p className="font-bold text-lg flex items-center gap-1.5"><Banknote size={18} className="ac-text" />Sumber Uang</p>
         {canManage && <Btn onClick={() => setModal({ editing: null })} className="!px-3 !py-2 mr-noprint"><Plus size={16} /></Btn>}
       </div>
-      <p className="text-[11px] s-muted -mt-1">Lacak uang mana yang dipakai buat beli motor mana. Angka <b className="s-text">dipakai</b> dan <b className="s-text">sisa</b> dihitung otomatis dari alokasi tiap unit.{!canManage && " Kamu bisa menempelkan & melepas motor; yang mengubah budget sumbernya cuma owner."}</p>
+      <div className="mr-printonly mr-printhead">
+        <h1>Laporan Sumber Uang — Motorell</h1>
+        <p>Dicetak {new Date().toLocaleString("id-ID")} oleh {me.name} ({roleLabel(me.role)})</p>
+      </div>
+      <p className="text-[11px] s-muted -mt-1 mr-noprint">Lacak uang mana yang dipakai buat beli motor mana. Angka <b className="s-text">dipakai</b> dan <b className="s-text">sisa</b> dihitung otomatis dari alokasi tiap unit.{!canManage && " Kamu bisa menempelkan & melepas motor; yang mengubah budget sumbernya cuma owner."}</p>
 
       {ov.rows.length > 0 && <MoneySummaryCards ov={ov} />}
+      <BudgetAlertBanner ov={ov} onOpen={(id) => setDetail(id)} />
       {ov.rows.length > 0 && ov.usedTerjual > 0 && (
         <Card className="p-3">
           <p className="text-[11px] leading-relaxed"><b>{rp(ov.usedTerjual)}</b> dari {ov.motorsTerjual} motor yang sudah laku sudah balik jadi uang. Alokasinya sengaja <b>tidak dilepas</b> supaya riwayat "motor ini dulu dibeli pakai uang apa" tetap ada — jadi <b className="s-text">Sisa budget {rp(ov.remaining)}</b> itu yang belum pernah dibelanjakan, sedangkan yang benar-benar bisa dipakai beli motor lagi sekarang <b className="text-emerald-500">{rp(ov.tersedia)}</b>.</p>
@@ -3042,15 +3354,30 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, ca
             <div className="space-y-1.5 mt-3">
               {/* Default cuma 15 terbaru: daftar penuh 200 entri bikin dashboard-nya jadi panjang
                   sekali di HP, padahal yang dicari biasanya perubahan barusan. */}
-              {state.moneyLogs.slice(0, semuaLog ? MONEY_LOG_MAX : 15).map((l) => (
-                <div key={l.id} className="s-soft rounded-lg px-3 py-2">
-                  <p className="text-[11px] break-words">{l.text}</p>
-                  <p className="text-[10px] s-muted mt-0.5">{l.byName}{l.byRole ? ` (${roleLabel(l.byRole)})` : ""} · {logTime(l.at)}</p>
-                </div>
-              ))}
-              {state.moneyLogs.length > 15 && (
+              {/* Saringan dibaca dari teks catatannya (logKind) — catatannya memang disimpan sebagai
+                  kalimat siap baca, bukan kode aksi. Menambah field `action` sekarang berarti semua
+                  riwayat lama tidak punya nilai itu dan hilang dari semua saringan. */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 mr-noprint">
+                {LOG_FILTERS.map(([k, l]) => (
+                  <button key={k} onClick={() => setLogFilter(k)} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap shrink-0 ${logFilter === k ? "ac-bg" : "s-soft s-muted"}`}>{l}</button>
+                ))}
+              </div>
+              {logsTampil.length === 0 && <p className="text-[11px] s-muted py-2">Tidak ada riwayat untuk saringan ini.</p>}
+              {logsTampil.map((l) => {
+                const k = logKind(l.text);
+                return (
+                  <div key={l.id} className="s-soft rounded-lg px-3 py-2 flex gap-2">
+                    <span className="text-sm shrink-0 leading-none mt-0.5" title={k.label}>{k.ic}</span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] break-words">{l.text}</p>
+                      <p className="text-[10px] s-muted mt-0.5">{l.byName}{l.byRole ? ` (${roleLabel(l.byRole)})` : ""} · {logTime(l.at)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {logsSaring.length > 15 && (
                 <button onClick={() => setSemuaLog((v) => !v)} className="w-full text-[11px] font-semibold ac-text py-2 mr-noprint">
-                  {semuaLog ? "Tampilkan lebih sedikit" : `Lihat semua ${state.moneyLogs.length} riwayat`}
+                  {semuaLog ? "Tampilkan lebih sedikit" : `Lihat semua ${logsSaring.length} riwayat`}
                 </button>
               )}
               <p className="text-[10px] s-muted">Menyimpan {MONEY_LOG_MAX} perubahan terakhir.</p>
@@ -3065,6 +3392,7 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, ca
           z-50, jadi yang belakangan menang. Menutupnya balik ke rincian sumber yang tadi. */}
       {canAllocate && <AddMotorToSourceModal sourceId={addTo} state={state} me={me} onClose={() => setAddTo(null)} update={update} unitOps={unitOps} />}
       {canAllocate && <EditAllocModal unit={state.units.find((u) => u.id === editAlloc) || null} state={state} me={me} onClose={() => setEditAlloc(null)} update={update} unitOps={unitOps} />}
+      <div className="mr-printonly mr-printfoot">Motorell Ops · dokumen internal · {ov.rows.length} sumber uang · total budget {rp(ov.budget)}</div>
     </div>
   );
 }
