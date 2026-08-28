@@ -873,7 +873,13 @@ button{transition:transform .12s ease}
   .mr-app,.mr-app .s-bg,.mr-app .s-surface,.mr-app .s-soft{background:#fff!important;background-image:none!important;box-shadow:none!important;color:#000!important}
   .mr-app .s-muted{color:#444!important}
   .mr-app .s-surface{border:1px solid #ccc!important}
-  .mr-app .rounded-2xl,.mr-app table{break-inside:avoid;page-break-inside:avoid}
+  .mr-app .rounded-2xl,.mr-app table,.mr-app thead,.mr-app tr{break-inside:avoid;page-break-inside:avoid}
+  .mr-app tr{page-break-after:auto}
+  .mr-app thead{display:table-header-group} /* judul kolom ikut terulang kalau tabel pindah halaman */
+  /* Grafik: warna irisan donat dipaksa ikut tercetak. Browser default membuang warna latar demi
+     hemat tinta, dan tanpa ini donatnya keluar jadi lingkaran putih polos tanpa arti. */
+  .mr-app svg,.mr-app .recharts-wrapper{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  .mr-app text{fill:#000!important}
 }
 @keyframes catPop{0%{opacity:0;transform:scale(.3) translateY(20px)}55%{opacity:1;transform:scale(1.15)}100%{transform:scale(1)}}
 @keyframes catConfetti{0%{opacity:1;transform:translateY(-12vh) rotate(0)}100%{opacity:.85;transform:translateY(108vh) rotate(720deg)}}
@@ -2167,16 +2173,32 @@ function moneyStat(state, src, skipUnitId) {
     pct: budget > 0 ? Math.round((used / budget) * 100) : used > 0 ? 100 : 0,
   };
 }
-/* Profit bersih yang dihasilkan uang dari sumber ini. Motor split dibagi PROPORSIONAL menurut
-   porsi pembiayaan: motor yang 40% dibiayai Uang A menyumbang 40% profitnya ke Uang A. Kalau
-   tidak, profit motor yang sama akan dihitung penuh di dua sumber sekaligus. */
+/* Pembagian profit satu motor ke sumber-sumber yang membiayainya, PROPORSIONAL menurut porsi
+   pembiayaan: motor yang 40% dibiayai Uang A menyumbang 40% profitnya ke Uang A. Tanpa ini profit
+   motor yang sama terhitung penuh di dua sumber sekaligus.
+
+   Basis pembaginya sengaja `unitProfit().net` — profit bersih SESUDAH pengeluaran unit, komisi
+   penjualan, dan jatah investor — bukan sekadar (harga jual − alokasi). Angka mentah itu akan
+   selalu lebih besar dari uang yang benar-benar masuk kantong, dan bakal berbeda dari angka yang
+   sama di Laporan & Detail unit. Satu rumus profit untuk seluruh aplikasi.
+
+   `hargaAndai` dipakai fitur forecast: hitung seolah-olah motornya laku di harga itu. */
+function allocProfitSplit(state, unit, hargaAndai) {
+  const allocs = unitAllocs(unit);
+  const total = allocs.reduce((a, x) => a + x.amount, 0);
+  const p = unitProfit(state, hargaAndai == null ? unit : { ...unit, sellPrice: hargaAndai });
+  return allocs.map((a) => {
+    const ratio = total > 0 ? a.amount / total : 0;
+    const profit = p ? Math.round(p.net * ratio) : null;
+    return { ...a, ratio, pct: total > 0 ? Math.round(ratio * 1000) / 10 : 0, profit, balik: profit == null ? null : a.amount + profit };
+  });
+}
+// Profit bersih yang sudah dipanen sumber ini dari motor-motor yang laku.
 function sourceProfit(state, src) {
-  return unitsOfSource(state.units, src.id).filter((u) => u.status === "terjual").reduce((a, u) => {
-    const p = unitProfit(state, u);
-    const total = allocTotal(u);
-    if (!p || total <= 0) return a;
-    return a + Math.round(p.net * (allocOnUnit(u, src.id) / total));
-  }, 0);
+  return (state.units || []).filter((u) => u.status === "terjual").reduce(
+    (a, u) => a + allocProfitSplit(state, u).filter((x) => x.sourceId === src.id).reduce((b, x) => b + (x.profit || 0), 0),
+    0
+  );
 }
 function moneyOverview(state) {
   const rows = (state.moneySources || []).map((s) => ({ ...moneyStat(state, s), profit: sourceProfit(state, s) }));
@@ -2441,6 +2463,68 @@ function UnitAllocSection({ unit, state, me, update, unitOps }) {
   );
 }
 
+/* Rincian modal satu motor: uangnya datang dari sumber mana saja, berapa porsinya, dan — kalau
+   sudah laku — berapa bagian profit tiap sumber. Untuk motor yang BELUM laku ada forecast:
+   ketik harga jual andaian, langsung kelihatan tiap sumber balik berapa.
+
+   Forecast-nya memanggil unitProfit() yang sama dengan perhitungan asli (lewat allocProfitSplit),
+   jadi angka andaian di sini tidak akan berbeda dari angka sebenarnya begitu motornya laku. */
+function MotorAllocationDetail({ unit, state }) {
+  const [andai, setAndai] = useState("");
+  useEffect(() => { setAndai(""); }, [unit.id]);
+  const sources = state.moneySources || [];
+  const terjual = unit.status === "terjual";
+  const hargaAndai = terjual ? null : Number(andai) > 0 ? Number(andai) : null;
+  const split = allocProfitSplit(state, unit, hargaAndai);
+  if (split.length === 0) return null;
+  const total = allocTotal(unit);
+  const adaProfit = split.some((a) => a.profit != null);
+  const totalBalik = split.reduce((a, x) => a + (x.balik == null ? x.amount : x.balik), 0);
+  return (
+    <div className="mb-4 rounded-xl border s-border p-3">
+      <p className="text-xs font-bold mb-2.5 flex items-center gap-1.5"><Coins size={14} className="ac-text" />Rincian modal{split.length > 1 ? ` · ${split.length} sumber` : ""}</p>
+      <div className="space-y-2.5">
+        {split.map((a) => (
+          <div key={a.slot}>
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-semibold truncate">{sourceName(sources, a.sourceId) || "sumber terhapus"}</span>
+              <span className="s-muted shrink-0">{a.pct}%</span>
+            </div>
+            <div className="h-1.5 rounded-full s-soft overflow-hidden my-1"><div className="h-full rounded-full" style={{ width: a.pct + "%", background: "#10b981" }} /></div>
+            <div className="flex items-center justify-between gap-2 text-[11px] s-muted">
+              <span>Modal {rp(a.amount)}</span>
+              {a.profit != null && <span className={`font-semibold shrink-0 ${a.profit >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{terjual ? "Profit bagian" : "Perkiraan"} {rp(a.profit)}</span>}
+            </div>
+            {a.balik != null && <p className="text-[10px] s-muted mt-0.5">Balik jadi <b className="s-text">{rp(a.balik)}</b></p>}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t s-border text-[11px]">
+        <span className="font-bold">Total modal dialokasikan</span>
+        <span className="font-extrabold shrink-0">{rp(total)}</span>
+      </div>
+      {+unit.buyPrice > 0 && total !== +unit.buyPrice && (
+        <p className="text-[10px] text-amber-500 font-semibold mt-1 flex items-start gap-1"><AlertTriangle size={11} className="shrink-0 mt-0.5" />Beda {rp(Math.abs(total - +unit.buyPrice))} dari harga beli {rp(unit.buyPrice)}.</p>
+      )}
+      {adaProfit && (
+        <div className="flex items-center justify-between gap-2 mt-1 text-[11px]">
+          <span className="font-bold">{terjual ? "Total balik ke sumber uang" : "Perkiraan balik"}</span>
+          <span className="font-extrabold shrink-0 ac-text">{rp(totalBalik)}</span>
+        </div>
+      )}
+      {!terjual && (
+        <div className="mt-2.5 pt-2.5 border-t s-border">
+          <p className="text-[11px] font-semibold mb-1.5">Andai laku di harga…</p>
+          <input type="number" inputMode="numeric" className={inputCls} value={andai} onChange={(e) => setAndai(e.target.value)} placeholder={unit.sellPrice ? String(unit.sellPrice) : "cth: 30000000"} />
+          {unit.sellPrice > 0 && !andai && <button onClick={() => setAndai(String(unit.sellPrice))} className="text-[11px] font-semibold ac-text underline mt-1.5">Pakai target jual ({rp(unit.sellPrice)})</button>}
+          {hargaAndai && !adaProfit && <p className="text-[11px] s-muted mt-1.5">Isi harga jual yang lebih masuk akal buat lihat perkiraannya.</p>}
+          {hargaAndai && adaProfit && <p className="text-[10px] s-muted mt-1.5">Perkiraan sudah dipotong pengeluaran unit, komisi penjualan, dan jatah investor — sama seperti hitungan asli.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Rincian satu sumber uang: daftar motor yang dibiayai, sisa budget, tambah/lepas motor.
    Ini "form"-nya sumber uang dari sisi uang — lawannya MoneyAllocFields yang mengerjakan hal yang
    sama dari sisi motor. Keduanya menulis ke field yang persis sama di baris unit, jadi tidak ada
@@ -2662,26 +2746,55 @@ function MoneySummaryCards({ ov }) {
 /* Donat distribusi alokasi antar sumber uang. Pakai recharts + greenShade, pola yang sama persis
    dengan grafik motor terlaris di Laporan — bukan SVG buatan tangan, biar konsisten dan ikut tema. */
 function MoneyDonut({ ov }) {
-  const data = ov.rows.filter((r) => r.used > 0).map((r) => ({ name: r.src.name, value: r.used }));
-  if (data.length === 0) return null;
+  /* Tiga sudut pandang, karena satu donat tidak bisa menjawab semuanya sekaligus:
+     - "semua"  : total yang pernah dialokasikan — porsi belanja sepanjang waktu
+     - "aktif"  : yang masih nyangkut di motor belum laku — "duit saya sekarang di mana"
+     - "profit" : hasil bersih yang sudah dipanen tiap sumber
+     Tanpa pilihan ini, sumber yang motornya sudah laku semua terlihat sama "besar" dengan sumber
+     yang uangnya masih tertanam — padahal artinya jauh berbeda. */
+  const MODES = [["semua", "Semua alokasi"], ["aktif", "Masih nyangkut"], ["profit", "Profit"]];
+  const [mode, setMode] = useState("semua");
+  const nilai = (r) => (mode === "aktif" ? r.usedAktif : mode === "profit" ? r.profit : r.used);
+  // Donat tidak bisa menggambarkan angka minus — sumber yang rugi dikeluarkan dari grafik lalu
+  // disebut terpisah di bawahnya, supaya kerugiannya tidak malah tersembunyi.
+  const minus = mode === "profit" ? ov.rows.filter((r) => r.profit < 0) : [];
+  const data = ov.rows.filter((r) => nilai(r) > 0).map((r) => ({ name: r.src.name, value: nilai(r) }));
+  const total = data.reduce((a, d) => a + d.value, 0);
+  const tengah = mode === "profit" ? { atas: rp(ov.profit), bawah: "profit bersih" } : mode === "aktif" ? { atas: String(ov.motors - ov.motorsTerjual), bawah: "motor belum laku" } : { atas: String(ov.motors), bawah: "motor" };
   return (
     <Card className="p-4">
-      <p className="font-bold text-sm mb-1">Distribusi alokasi uang</p>
-      <p className="text-[11px] s-muted mb-3">Porsi tiap sumber terhadap total {rp(ov.used)} yang sudah dialokasikan.</p>
-      <div className="relative h-48">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={52} outerRadius={76} paddingAngle={data.length > 1 ? 3 : 0} stroke="none">{data.map((d, i) => <Cell key={i} fill={greenShade(i, data.length)} />)}</Pie></PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 grid place-items-center pointer-events-none"><div className="text-center"><p className="text-lg font-extrabold leading-none">{ov.motors}</p><p className="text-[11px] s-muted">motor</p></div></div>
+      <p className="font-bold text-sm mb-2">Distribusi uang</p>
+      <div className="grid grid-cols-3 gap-1 s-soft rounded-xl p-1 mb-3 mr-noprint">
+        {MODES.map(([k, l]) => <button key={k} onClick={() => setMode(k)} className={`py-1.5 rounded-lg text-[11px] font-bold transition ${mode === k ? "ac-bg text-white" : "s-muted"}`}>{l}</button>)}
       </div>
-      <div className="space-y-1.5 mt-2">
-        {data.map((d, i) => (
-          <div key={d.name} className="flex items-center justify-between text-sm gap-2">
-            <div className="flex items-center gap-2 min-w-0"><span className="w-3 h-3 rounded-full shrink-0" style={{ background: greenShade(i, data.length) }} /><span className="font-medium truncate">{d.name}</span></div>
-            <span className="s-muted text-xs shrink-0">{rp(d.value)} · {Math.round((d.value / ov.used) * 100)}%</span>
+      <p className="text-[11px] s-muted mb-3">
+        {mode === "semua" && <>Porsi tiap sumber terhadap total {rp(ov.used)} yang pernah dialokasikan — termasuk motor yang sudah laku.</>}
+        {mode === "aktif" && <>Uang yang masih tertanam di motor yang belum laku: {rp(ov.usedAktif)}.</>}
+        {mode === "profit" && <>Profit bersih dari motor yang sudah laku, dibagi proporsional untuk motor split.</>}
+      </p>
+      {data.length === 0 ? (
+        <p className="text-xs s-muted py-6 text-center">{mode === "profit" ? "Belum ada motor laku yang menghasilkan profit." : mode === "aktif" ? "Tidak ada uang yang sedang tertanam — semua motor sudah laku." : "Belum ada alokasi."}</p>
+      ) : (
+        <>
+          <div className="relative h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={52} outerRadius={76} paddingAngle={data.length > 1 ? 3 : 0} stroke="none">{data.map((d, i) => <Cell key={i} fill={greenShade(i, data.length)} />)}</Pie></PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 grid place-items-center pointer-events-none"><div className="text-center"><p className="text-base font-extrabold leading-none">{tengah.atas}</p><p className="text-[11px] s-muted">{tengah.bawah}</p></div></div>
           </div>
-        ))}
-      </div>
+          <div className="space-y-1.5 mt-2">
+            {data.map((d, i) => (
+              <div key={d.name} className="flex items-center justify-between text-sm gap-2">
+                <div className="flex items-center gap-2 min-w-0"><span className="w-3 h-3 rounded-full shrink-0" style={{ background: greenShade(i, data.length) }} /><span className="font-medium truncate">{d.name}</span></div>
+                <span className="s-muted text-xs shrink-0">{rp(d.value)} · {Math.round((d.value / total) * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {minus.length > 0 && (
+        <p className="text-[11px] text-rose-500 font-semibold mt-2 flex items-start gap-1"><AlertTriangle size={12} className="shrink-0 mt-0.5" />Tidak masuk grafik karena rugi: {minus.map((r) => `${r.src.name} ${rp(r.profit)}`).join(", ")}.</p>
+      )}
     </Card>
   );
 }
@@ -2809,10 +2922,27 @@ function SumberUangPanel({ state, me, update, unitOps, onOpenUnit, canManage, ca
     ov.rows.forEach((r) => sum.push([r.src.name, r.budget, r.used, r.remaining, r.pct / 100, r.usedAktif, r.usedTerjual, r.tersedia, r.profit, r.count, r.terjual.length, r.src.notes || ""]));
     sum.push([], ["TOTAL", ov.budget, ov.used, ov.remaining, ov.pct / 100, ov.usedAktif, ov.usedTerjual, ov.tersedia, ov.profit, ov.motors, ov.motorsTerjual, ""]);
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), "Ringkasan");
-    const rows = [["Sumber", "Motor", "Tahun", "Plat", "Investor", "Jumlah dipakai", "Harga beli", "Harga jual", "Profit bersih", "Tanggal masuk", "Tanggal keluar", "Status"]];
-    ov.rows.forEach((r) => r.units.forEach((u) => { const p = unitProfit(state, u); rows.push([r.src.name, u.name, u.year || "", u.plate || "", u.investorCode || "", allocOnUnit(u, r.src.id), u.buyPrice || 0, u.sellPrice || 0, p ? p.net : "", u.inDate || "", u.soldAt || "", statusMeta(u.status).l]); }));
-    ov.untracked.forEach((u) => rows.push(["(belum ditandai)", u.name, u.year || "", u.plate || "", u.investorCode || "", 0, u.buyPrice || 0, u.sellPrice || 0, "", u.inDate || "", u.soldAt || "", statusMeta(u.status).l]));
-    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(rows), "Rincian Motor");
+    /* Sheet "Alokasi": SATU BARIS PER ALOKASI (motor split muncul dua kali, sekali per sumber).
+       Kolom profitnya diisi BAGIAN sumber itu saja, bukan profit penuh motornya — kalau diisi
+       penuh, menjumlahkan kolom ini pada motor split menghasilkan profit dobel. */
+    const rows = [["Sumber", "Motor", "Tahun", "Plat", "Investor", "Jumlah dipakai", "% dari modal motor", "Harga beli", "Harga jual", "Bagian profit sumber ini", "Modal + profit balik", "Tanggal masuk", "Tanggal keluar", "Status"]];
+    ov.rows.forEach((r) => r.units.forEach((u) => {
+      const bag = allocProfitSplit(state, u).filter((x) => x.sourceId === r.src.id);
+      const amt = allocOnUnit(u, r.src.id);
+      const share = bag.reduce((a, x) => a + (x.profit || 0), 0);
+      const adaProfit = u.status === "terjual" && bag.some((x) => x.profit != null);
+      rows.push([r.src.name, u.name, u.year || "", u.plate || "", u.investorCode || "", amt, bag.reduce((a, x) => a + x.ratio, 0), u.buyPrice || 0, u.sellPrice || 0, adaProfit ? share : "", adaProfit ? amt + share : "", u.inDate || "", u.soldAt || "", statusMeta(u.status).l]);
+    }));
+    ov.untracked.forEach((u) => rows.push(["(belum ditandai)", u.name, u.year || "", u.plate || "", u.investorCode || "", 0, 0, u.buyPrice || 0, u.sellPrice || 0, "", "", u.inDate || "", u.soldAt || "", statusMeta(u.status).l]));
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(rows), "Alokasi");
+    /* Sheet "Per Motor": SATU BARIS PER MOTOR, alokasinya digabung jadi satu teks. Kolom profitnya
+       aman dijumlahkan karena tiap motor cuma muncul sekali. */
+    const perMotor = [["Motor", "Tahun", "Plat", "Status", "Investor", "Sumber uang", "Total alokasi", "Harga beli", "Harga jual", "Profit bersih", "Tanggal masuk", "Tanggal keluar"]];
+    state.units.forEach((u) => {
+      const p = unitProfit(state, u);
+      perMotor.push([u.name, u.year || "", u.plate || "", statusMeta(u.status).l, u.investorCode || "", describeAlloc(u, state.moneySources), allocTotal(u), u.buyPrice || 0, u.sellPrice || 0, u.status === "terjual" && p ? p.net : "", u.inDate || "", u.soldAt || ""]);
+    });
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(perMotor), "Per Motor");
     // Sheet ketiga: riwayat perubahan, supaya file export berdiri sendiri sebagai bukti audit.
     const logRows = [["Waktu", "Oleh", "Peran", "Perubahan"]];
     (state.moneyLogs || []).forEach((l) => logRows.push([logTime(l.at), l.byName, roleLabel(l.byRole), l.text]));
@@ -3062,6 +3192,16 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       return u;
     });
     setConfirmUnsell(null); setDpForm(null);
+    /* Jual & batal-jual ikut dicatat di riwayat sumber uang — bukan cuma di unitnya. Menandai
+       terjual memindahkan uang dari "nyangkut" ke "modal balik", jadi angka di dashboard berubah
+       tanpa ada satu pun perubahan alokasi. Tanpa catatan ini, owner melihat "tersedia" naik
+       sendiri dan tidak ada jejak kenapa. Cuma dicatat untuk motor yang PUNYA alokasi. */
+    if (unitAllocs(unit).length && (status === "terjual") !== wasSold) {
+      const p = unitProfit(state, unit);
+      update((s) => pushMoneyLog(s, me, status === "terjual"
+        ? `${unit.name} TERJUAL — modal ${describeAlloc(unit, s.moneySources)} balik${p ? ` · profit bersih ${rp(p.net)}` : ""}`
+        : `${unit.name} batal jual — modal ${describeAlloc(unit, s.moneySources)} kembali terhitung nyangkut`));
+    }
     if (status === "terjual" && !wasSold) window.dispatchEvent(new CustomEvent("mr-sale"));
   };
   // Batal jual menghapus tanggal terjual → unit langsung lenyap dari hitungan bulan itu. Dulu ini
@@ -3073,7 +3213,19 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
     applyStatus(status);
   };
   const delExp = (id) => update((s) => { s.expenses = s.expenses.filter((e) => e.id !== id); return s; });
-  const delUnit = () => { unitOps.remove(unitId); update((s) => { s.expenses = s.expenses.filter((e) => e.unitId !== unitId); return s; }); setConfirmDel(false); onClose(); };
+  // Hapus unit: alokasinya ikut lenyap dari semua total sumber uang, jadi WAJIB ada jejaknya —
+  // kalau tidak, angka "dipakai" turun sendiri tanpa satu pun catatan yang menjelaskan.
+  const delUnit = () => {
+    const punyaAlokasi = unitAllocs(unit).length > 0;
+    const rincian = punyaAlokasi ? describeAlloc(unit, state.moneySources) : "";
+    unitOps.remove(unitId);
+    update((s) => {
+      s.expenses = s.expenses.filter((e) => e.unitId !== unitId);
+      if (punyaAlokasi) pushMoneyLog(s, me, `Unit ${unit.name} DIHAPUS — alokasi ${rincian} ikut hilang dari total`);
+      return s;
+    });
+    setConfirmDel(false); onClose();
+  };
   const photoRef = useRef(null);
   const onPhoto = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; const data = await compress(f, 800, 0.5); if (data) setField("photo", data); };
   return (
@@ -3114,6 +3266,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
       )}
       {/* Alokasi sumber uang: owner & admin sama-sama boleh mengubah. Staff tidak melihat sama
           sekali — sama seperti angka profit unit. */}
+      {isMgr && <MotorAllocationDetail unit={unit} state={state} />}
       {isMgr && <UnitAllocSection unit={unit} state={state} me={me} update={update} unitOps={unitOps} />}
       {isMgr && (
         <div className="mb-4"><ProfitBreakdown state={state} unit={unit} /></div>
@@ -3173,7 +3326,7 @@ function UnitDetailModal({ unitId, state, me, onClose, onAddExp, onEditExp, upda
           <button onClick={() => setConfirmDel(true)} className="w-full text-rose-500 text-sm font-semibold py-2 flex items-center justify-center gap-1.5"><Trash2 size={15} />Hapus unit ini</button>
         ) : (
           <div className="space-y-2">
-            <p className="text-xs text-center s-muted">Yakin hapus <b className="s-text">{unit.name}</b> beserta semua pengeluarannya? Tindakan ini permanen.</p>
+            <p className="text-xs text-center s-muted">Yakin hapus <b className="s-text">{unit.name}</b> beserta semua pengeluarannya? Tindakan ini permanen.{isMgr && unitAllocs(unit).length > 0 && <> Alokasi <b className="s-text">{describeAlloc(unit, state.moneySources)}</b> juga ikut hilang dari total sumber uang.</>}</p>
             <div className="grid grid-cols-2 gap-2"><Btn variant="ghost" onClick={() => setConfirmDel(false)}>Batal</Btn><button onClick={delUnit} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white active:scale-[0.97] transition">Hapus</button></div>
           </div>
         )}
