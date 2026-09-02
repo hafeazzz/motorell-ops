@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BUILD_ID, swSupported } from "../utils/sw";
+import { BUILD_ID, swSupported, safeReload } from "../utils/sw";
 
 const VERSION_KEY = "motorell-app-version";
 const CHECK_MS = 5 * 60 * 1000; // 5 menit
@@ -32,7 +32,7 @@ export default function useVersionCheck() {
             await Promise.all(regs.map((reg) => reg.update().catch(() => {})));
           } catch (e) {}
         }
-        window.location.reload();
+        safeReload(); // tunda sampai tab disembunyikan biar tak menarik halaman dari bawah kaki user
       } catch (e) {} // offline / gagal fetch: diamkan, coba lagi nanti
     };
 

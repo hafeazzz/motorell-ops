@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { registerSW, swSupported } from "../utils/sw";
+import { registerSW, swSupported, safeReload } from "../utils/sw";
 
 const CHECK_MS = 30000; // cek update tiap 30 detik
 
@@ -19,7 +19,7 @@ export default function useServiceWorker() {
     const onControllerChange = () => {
       if (dead || reloaded || !hadController) return;
       reloaded = true;
-      window.location.reload();
+      safeReload(); // tunda sampai tab disembunyikan + pemutus arus anti-loop
     };
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
