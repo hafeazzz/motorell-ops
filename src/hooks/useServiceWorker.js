@@ -1,27 +1,26 @@
 import { useEffect } from "react";
-import { registerSW, swSupported, safeReload } from "../utils/sw";
+import { registerSW, swSupported } from "../utils/sw";
 
 const CHECK_MS = 30000; // cek update tiap 30 detik
 
-// Daftarkan service worker, cek update berkala, dan reload otomatis begitu SW versi baru
-// mengambil alih halaman (deploy baru langsung kepakai tanpa user harus refresh manual).
+// Daftarkan service worker & tarik versi baru ke belakang layar secara berkala.
+//
+// SENGAJA TIDAK reload di sini. Dulu hook ini reload begitu 'controllerchange' nyala
+// (SW baru mengambil alih halaman). Di macOS desktop itu jadi "refresh sendiri pas buka
+// menu": tiap balik ke jendela browser → visibilitychange → reg.update() → kalau browser
+// menganggap sw.js "baru" (revalidasi skrip SW di Safari longgar; edge Vercel kadang jawab
+// 200 bukan 304) → skipWaiting + clients.claim → controllerchange → reload, padahal bukan
+// deploy baru. HP membekukan tab background jadi jarang kena; Windows biasanya 1 jendela
+// fokus jadi jarang kena; macOS (banyak Cmd-Tab) kena terus.
+//
+// Satu-satunya sinyal "ada deploy baru" yang dipakai sekarang: useVersionCheck membandingkan
+// BUILD_ID (ditempel di bundle) dengan /version.json, lalu safeReload() (tunda sampai tab
+// disembunyikan). Hook ini cukup memastikan SW + cache versi baru sudah ke-fetch & siap.
 export default function useServiceWorker() {
   useEffect(() => {
     if (!swSupported()) return;
     let dead = false;
     let timer = null;
-    let reloaded = false;
-
-    // Kalau halaman ini belum dikontrol SW manapun (kunjungan pertama), 'controllerchange'
-    // akan tetap nyala saat SW pertama aktif — itu bukan deploy baru, jadi jangan reload.
-    const hadController = !!navigator.serviceWorker.controller;
-
-    const onControllerChange = () => {
-      if (dead || reloaded || !hadController) return;
-      reloaded = true;
-      safeReload(); // tunda sampai tab disembunyikan + pemutus arus anti-loop
-    };
-    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
     (async () => {
       try {
@@ -34,7 +33,6 @@ export default function useServiceWorker() {
     return () => {
       dead = true;
       if (timer) clearInterval(timer);
-      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
     };
   }, []);
 }

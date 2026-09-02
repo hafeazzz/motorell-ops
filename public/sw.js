@@ -17,7 +17,10 @@ self.addEventListener("activate", (e) => {
       const keys = await caches.keys();
       await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
     } catch (err) {}
-    try { await self.clients.claim(); } catch (err) {}
+    // SENGAJA TIDAK clients.claim(): jangan rebut kendali halaman yang lagi kebuka di
+    // tengah sesi — di macOS itu memicu 'controllerchange' → reload mendadak walau bukan
+    // deploy baru (lihat useServiceWorker.js). SW baru cukup mengambil alih di navigasi
+    // berikutnya, yaitu saat useVersionCheck memang sudah memutuskan reload.
   })());
 });
 
