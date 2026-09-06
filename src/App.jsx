@@ -378,6 +378,56 @@ async function loadState() {
 let lastSaveAt = 0; // dipakai penyegaran saat tab aktif, biar tidak menimpa tulisan sendiri
 async function saveState(s) { lastSaveAt = Date.now(); try { await window.storage.set(STORE_KEY, JSON.stringify(s), true); } catch (e) {} }
 
+/* ===== Tulis blob TANPA menimpa perubahan device lain (anti "data basi") =====
+   users/expenses/media/lives/extras/inspections/moneySources/moneyLogs masih ikut blob kv
+   (satu objek JSON), beda dari attendance/tasks/units yang sudah punya tabel sendiri. update()
+   dulu menyimpan blob dari state DI MEMORI apa adanya — kalau realtime sempat putus (tab
+   di-background di macOS makin sering sejak tab tidak lagi auto-reload), state itu basi dan
+   tulisannya MENGHIDUPKAN LAGI record yang sudah dihapus di device lain (anggota yang sudah
+   keluar muncul lagi, rincian pajak yang dihapus balik, dst).
+
+   reconcileCollection() = merge 3-arah per record memakai `prev` (state sebelum mutasi ini)
+   sebagai leluhur bersama:
+   - record baru dibuat di update ini (tidak ada di prev)          → dipertahankan
+   - record masih ada di prev tapi hilang di server               → JANGAN dihidupkan lagi
+   - record diubah oleh update ini                                 → versi lokal menang
+   - record tidak disentuh update ini tapi berubah di server      → ambil versi server
+   - record baru dari device lain (tidak ada di prev & next)       → diadopsi
+   Bentrok edit record yang sama tetap last-write-wins per record (perilaku lama). */
+const RECON_KEYS = ["users", "expenses", "media", "lives", "extras", "inspections", "moneySources", "moneyLogs"];
+const FLAG_KEYS = ["_v", "_sbFix", "_attMigrated", "_taskMigrated", "_unitMigrated"];
+function reconcileCollection(prevArr, nextArr, serverArr) {
+  const pv = Array.isArray(prevArr) ? prevArr : [];
+  const nx = Array.isArray(nextArr) ? nextArr : [];
+  const sv = Array.isArray(serverArr) ? serverArr : [];
+  const map = (a) => { const m = new Map(); for (const r of a) if (r && r.id != null) m.set(r.id, r); return m; };
+  const prevM = map(pv), serverM = map(sv), nextM = map(nx);
+  const out = []; const seen = new Set();
+  for (const r of nx) {
+    if (!r || r.id == null || seen.has(r.id)) continue;
+    seen.add(r.id);
+    if (!prevM.has(r.id)) { out.push(r); continue; }        // baru dibuat lokal pada update ini
+    if (!serverM.has(r.id)) continue;                        // sudah dihapus di server → jangan hidupkan
+    const touched = JSON.stringify(prevM.get(r.id)) !== JSON.stringify(r);
+    out.push(touched ? r : serverM.get(r.id));               // edit lokal menang; kalau tak diubah pakai server
+  }
+  for (const r of sv) {
+    if (!r || r.id == null || seen.has(r.id)) continue;
+    seen.add(r.id);
+    if (prevM.has(r.id) && !nextM.has(r.id)) continue;       // dihapus lokal pada update ini → hormati
+    out.push(r);                                             // penambahan dari device lain
+  }
+  return out;
+}
+// Ambil blob mentah TERBARU dari server (tanpa migrasi/tabel — cukup untuk merge di atas).
+async function fetchServerState() {
+  try {
+    const r = await window.storage.get(STORE_KEY, true);
+    if (r && r.value) { const p = JSON.parse(r.value); if (p && p._v === SEED_V) return normalize(p); }
+  } catch (e) {}
+  return null;
+}
+
 // Hapus foto absen & bukti live yang lebih tua dari PHOTO_TTL_DAYS hari (catatannya tetap disimpan).
 const PHOTO_TTL_DAYS = 2;
 function prunePhotos(state) {
@@ -709,7 +759,8 @@ function MotorellOps() {
     };
     document.addEventListener("visibilitychange", segarkan);
     window.addEventListener("focus", segarkan);
-    return () => { document.removeEventListener("visibilitychange", segarkan); window.removeEventListener("focus", segarkan); };
+    window.addEventListener("online", segarkan); // jaringan balik = realtime sempat putus → tarik ulang
+    return () => { document.removeEventListener("visibilitychange", segarkan); window.removeEventListener("focus", segarkan); window.removeEventListener("online", segarkan); };
   }, []);
   // Absensi punya tabel & realtime sendiri: update HP lain langsung nyambung tanpa reload penuh.
   useEffect(() => {
@@ -748,7 +799,31 @@ function MotorellOps() {
     const unsub = window.storage.unitSubscribe(reload);
     return unsub;
   }, []);
-  const update = (fn) => setState((prev) => { const next = fn(structuredClone(prev)); saveState(next); return next; });
+  /* update(): terapkan mutasi -> tampilkan optimistik -> simpan dengan MERGE lawan blob server
+     terbaru (lihat reconcileCollection). Panggilan di-antre satu per satu (saveChainRef) supaya
+     dua tap cepat tidak saling baca-server sebelum yang pertama tersimpan. */
+  const saveChainRef = useRef(Promise.resolve());
+  const persistReconciled = React.useCallback(async (prev, next) => {
+    const server = await fetchServerState();
+    let merged = next;
+    if (server) {
+      merged = structuredClone(next);
+      for (const k of RECON_KEYS) merged[k] = reconcileCollection(prev[k], next[k], server[k]);
+      for (const k of FLAG_KEYS) if (k in server) merged[k] = server[k];
+      // koleksi bertabel-sendiri: blob cuma cadangan usang, tulis versi server apa adanya
+      for (const k of ["attendance", "tasks", "units"]) if (Array.isArray(server[k])) merged[k] = server[k];
+    }
+    await saveState(merged);
+    // selaraskan memori dgn yang benar-benar tersimpan; attendance/tasks/units tetap dari state
+    // terkini (punya jalur realtime sendiri & bisa berubah sejak merge tadi)
+    setState((cur) => (cur ? { ...merged, attendance: cur.attendance, tasks: cur.tasks, units: cur.units } : merged));
+    setMe((m) => (m ? (merged.users.find((u) => u.id === m.id) || m) : m));
+  }, []);
+  const update = (fn) => setState((prev) => {
+    const next = fn(structuredClone(prev));
+    saveChainRef.current = saveChainRef.current.then(() => persistReconciled(prev, next)).catch(() => {});
+    return next; // optimistik: UI langsung berubah, merge & simpan jalan di belakang
+  });
   const toggleDark = () => setDark((d) => { const nd = !d; window.storage.set(THEME_KEY, nd ? "1" : "0").catch(() => {}); return nd; });
   useEffect(() => {
     const c = dark ? "#050810" : "#0f172a";
